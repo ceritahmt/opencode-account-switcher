@@ -71,16 +71,16 @@ function isLimitCandidateEvent(eventType: string): boolean {
 }
 
 function extractLimitReason(event: unknown): string | null {
-  const text = collectStrings(event).join("\n");
-  if (!ACCOUNT_SWITCH_TRIGGER_RE.test(text)) return null;
-  return summarizeForLog(extractErrorMessage(event) ?? text);
+  const text = extractSafeLimitText(event);
+  if (!text || !ACCOUNT_SWITCH_TRIGGER_RE.test(text)) return null;
+  return summarizeForLog(text);
 }
 
 function extractRetryAttempt(event: unknown): number | null {
   const propertiesAttempt = extractPropertyNumber(event, "attempt");
   if (propertiesAttempt !== null) return propertiesAttempt;
 
-  const text = collectStrings(event).join("\n");
+  const text = extractSafeLimitText(event) ?? "";
   const match = /attempt\s*#?(\d+)/i.exec(text);
   if (!match) return null;
 
@@ -96,24 +96,64 @@ function extractPropertyNumber(event: unknown, key: string): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
-function extractErrorMessage(event: unknown): string | null {
-  if (typeof event !== "object" || event === null) return null;
-  const properties = (event as { properties?: unknown }).properties;
-  if (typeof properties !== "object" || properties === null) return null;
-  const error = (properties as { error?: unknown }).error;
-  if (typeof error !== "object" || error === null) return null;
+function extractSafeLimitText(event: unknown): string | null {
+  const eventType = getEventType(event);
+  const properties = getProperties(event);
+  if (!properties) return null;
 
-  const directMessage = (error as { message?: unknown }).message;
-  return typeof directMessage === "string" && directMessage.trim() ? directMessage : null;
+  const texts: string[] = [];
+
+  if (
+    eventType === "session.next.retried" ||
+    eventType === "session.error" ||
+    eventType === "session.next.step.failed"
+  ) {
+    texts.push(...extractErrorTexts(properties.error));
+  }
+
+  if (eventType === "session.status") {
+    texts.push(...extractMessageTexts(properties.status));
+  }
+
+  if (eventType === "message.updated") {
+    const info = getRecord(properties.info);
+    if (info) texts.push(...extractErrorTexts(info.error));
+  }
+
+  return texts.map((text) => text.trim()).filter(Boolean).join("\n") || null;
 }
 
-function collectStrings(value: unknown, seen = new Set<unknown>()): string[] {
-  if (typeof value === "string") return [value];
-  if (typeof value !== "object" || value === null || seen.has(value)) return [];
-  seen.add(value);
+function extractErrorTexts(value: unknown): string[] {
+  const record = getRecord(value);
+  if (!record) return typeof value === "string" ? [value] : [];
 
-  if (Array.isArray(value)) return value.flatMap((child) => collectStrings(child, seen));
-  return Object.values(value as Record<string, unknown>).flatMap((child) => collectStrings(child, seen));
+  const texts = extractMessageTexts(record);
+  const responseBody = record.responseBody;
+  if (typeof responseBody === "string") texts.push(responseBody);
+  return texts;
+}
+
+function extractMessageTexts(value: unknown): string[] {
+  const record = getRecord(value);
+  if (!record) return typeof value === "string" ? [value] : [];
+
+  const texts: string[] = [];
+  const message = record.message;
+  if (typeof message === "string") texts.push(message);
+
+  const data = getRecord(record.data);
+  if (data && typeof data.message === "string") texts.push(data.message);
+
+  return texts;
+}
+
+function getProperties(event: unknown): Record<string, unknown> | null {
+  if (typeof event !== "object" || event === null) return null;
+  return getRecord((event as { properties?: unknown }).properties);
+}
+
+function getRecord(value: unknown): Record<string, unknown> | null {
+  return typeof value === "object" && value !== null ? (value as Record<string, unknown>) : null;
 }
 
 function getEventType(event: unknown): string {

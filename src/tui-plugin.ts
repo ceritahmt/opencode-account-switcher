@@ -95,7 +95,6 @@ type ProjectModule = {
   getRuntimePaths: (env?: NodeJS.ProcessEnv) => unknown;
   loadAccountSettings: (paths: unknown) => Promise<AccountSettings>;
   listProfileSummaries: (paths: unknown) => Promise<ProfileSummary[]>;
-  markActiveProfileLimited: (paths: unknown, reason: string) => Promise<string | null>;
   runCli: (argv: string[], env?: NodeJS.ProcessEnv) => Promise<CliResult>;
   setAutoSwitch: (paths: unknown, autoSwitch: boolean) => Promise<AccountSettings>;
 };
@@ -527,37 +526,8 @@ async function handlePossibleLimitEvent(api: TuiApi, event: unknown): Promise<vo
     retryAttempt === null ? "attempt: unknown" : `attempt: ${retryAttempt}`,
   ]);
 
-  const limitedProfile = await markActiveProfileLimited(reason).catch(async (error) => {
-    await appendDiagnosticLog("account limit mark failed", [`error: ${toErrorMessage(error)}`]);
-    return null;
-  });
-
-  if (!limitedProfile) {
-    await appendDiagnosticLog("account limit no active profile found", [`reason: ${summarizeForLog(reason)}`]);
-    return;
-  }
-
-  const nextProfile = await findNextAvailableProfile().catch(async (error) => {
-    await appendDiagnosticLog("account limit next profile lookup failed", [`error: ${toErrorMessage(error)}`]);
-    return null;
-  });
-
-  if (!nextProfile) {
-    api.ui.toast({
-      variant: "warning",
-      message: `Account issue detected for ${limitedProfile}, but no available next account was found.`,
-      duration: 10000,
-    });
-    return;
-  }
-
-  const settings = await loadAccountSettings().catch(() => ({ autoSwitch: false }));
-  if (settings.autoSwitch) {
-    await switchProfileAfterLimit(api, limitedProfile, nextProfile.id, true);
-    return;
-  }
-
-  showLimitSwitchConfirm(api, limitedProfile, nextProfile.id);
+  await appendDiagnosticLog("account limit observed by tui", ["waiting for server persisted marker"]);
+  void handlePersistedLimitState(api);
 }
 
 async function handlePersistedLimitState(api: TuiApi): Promise<void> {
@@ -794,11 +764,6 @@ async function setAutoSwitch(autoSwitch: boolean): Promise<AccountSettings> {
   return project.setAutoSwitch(project.getRuntimePaths(process.env), autoSwitch);
 }
 
-async function markActiveProfileLimited(reason: string): Promise<string | null> {
-  const project = await loadProjectModule();
-  return project.markActiveProfileLimited(project.getRuntimePaths(process.env), reason);
-}
-
 async function clearLimitedProfiles(): Promise<void> {
   const project = await loadProjectModule();
   await project.clearLimitedProfiles(project.getRuntimePaths(process.env));
@@ -919,17 +884,16 @@ function formatAvailableIn(availableAt: string | null): string {
 }
 
 function extractLimitReason(event: unknown): string | null {
-  const text = collectStrings(event).join("\n");
-  if (!isUsageLimitText(text)) return null;
-  const message = extractErrorMessage(event) ?? text;
-  return summarizeForLog(message);
+  const text = extractSafeLimitText(event);
+  if (!text || !isUsageLimitText(text)) return null;
+  return summarizeForLog(text);
 }
 
 function extractRetryAttempt(event: unknown): number | null {
   const propertiesAttempt = extractPropertyNumber(event, "attempt");
   if (propertiesAttempt !== null) return propertiesAttempt;
 
-  const text = collectStrings(event).join("\n");
+  const text = extractSafeLimitText(event) ?? "";
   const match = /attempt\s*#?(\d+)/i.exec(text);
   if (!match) return null;
 
@@ -963,6 +927,70 @@ function extractToastMessage(event: unknown): string {
   return typeof message === "string" ? message : "";
 }
 
+function extractSafeLimitText(event: unknown): string | null {
+  const eventType = getEventType(event);
+  const properties = getProperties(event);
+  if (!properties) return null;
+
+  const texts: string[] = [];
+
+  if (
+    eventType === "session.next.retried" ||
+    eventType === "session.error" ||
+    eventType === "session.next.step.failed"
+  ) {
+    texts.push(...extractErrorTexts(properties.error));
+  }
+
+  if (eventType === "session.status") {
+    texts.push(...extractMessageTexts(properties.status));
+  }
+
+  if (eventType === "message.updated") {
+    const info = getRecord(properties.info);
+    if (info) texts.push(...extractErrorTexts(info.error));
+  }
+
+  if (eventType === "tui.toast.show") {
+    texts.push(...extractMessageTexts(properties));
+  }
+
+  return texts.map((text) => text.trim()).filter(Boolean).join("\n") || null;
+}
+
+function extractErrorTexts(value: unknown): string[] {
+  const record = getRecord(value);
+  if (!record) return typeof value === "string" ? [value] : [];
+
+  const texts = extractMessageTexts(record);
+  const responseBody = record.responseBody;
+  if (typeof responseBody === "string") texts.push(responseBody);
+  return texts;
+}
+
+function extractMessageTexts(value: unknown): string[] {
+  const record = getRecord(value);
+  if (!record) return typeof value === "string" ? [value] : [];
+
+  const texts: string[] = [];
+  const message = record.message;
+  if (typeof message === "string") texts.push(message);
+
+  const data = getRecord(record.data);
+  if (data && typeof data.message === "string") texts.push(data.message);
+
+  return texts;
+}
+
+function getProperties(event: unknown): Record<string, unknown> | null {
+  if (typeof event !== "object" || event === null) return null;
+  return getRecord((event as { properties?: unknown }).properties);
+}
+
+function getRecord(value: unknown): Record<string, unknown> | null {
+  return typeof value === "object" && value !== null ? (value as Record<string, unknown>) : null;
+}
+
 function getEventType(event: unknown): string {
   if (typeof event !== "object" || event === null) return "unknown";
   const type = (event as { type?: unknown }).type;
@@ -972,25 +1000,6 @@ function getEventType(event: unknown): string {
 function summarizeEventForLog(event: unknown): string {
   const text = collectStrings(event).join(" ");
   return text ? summarizeForLog(text) : "no string payload";
-}
-
-function extractErrorMessage(event: unknown): string | null {
-  if (typeof event !== "object" || event === null) return null;
-  const properties = (event as { properties?: unknown }).properties;
-  if (typeof properties !== "object" || properties === null) return null;
-  const error = (properties as { error?: unknown }).error;
-  if (typeof error !== "object" || error === null) return null;
-
-  const directMessage = (error as { message?: unknown }).message;
-  if (typeof directMessage === "string" && directMessage.trim()) return directMessage;
-
-  const data = (error as { data?: unknown }).data;
-  if (typeof data === "object" && data !== null) {
-    const dataMessage = (data as { message?: unknown }).message;
-    if (typeof dataMessage === "string" && dataMessage.trim()) return dataMessage;
-  }
-
-  return null;
 }
 
 function collectStrings(value: unknown, seen = new Set<unknown>()): string[] {

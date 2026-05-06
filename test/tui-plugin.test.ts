@@ -56,12 +56,14 @@ test("tui plugin registers settings and usage-limit auto-switch hooks", async ()
   assert.match(source, /extractRetryAttempt/);
   assert.match(source, /extractPropertyNumber/);
   assert.match(source, /isInternalLimitToast/);
+  assert.match(source, /extractSafeLimitText/);
   assert.match(source, /usage limit\|limit has been reached/);
   assert.match(source, /available in:/);
   assert.match(source, /formatAvailableIn/);
   assert.match(source, /account limit retry pending/);
   assert.match(source, /retryAttempt < 2/);
-  assert.match(source, /markActiveProfileLimited/);
+  assert.match(source, /account limit observed by tui/);
+  assert.doesNotMatch(source, /project\.markActiveProfileLimited/);
   assert.match(source, /findNextAvailableProfile/);
   assert.match(source, /runCli\(\["use", nextProfile\]\)/);
 });
@@ -89,6 +91,8 @@ test("server plugin handles usage-limit events", async () => {
   assert.match(source, /message\.updated/);
   assert.match(source, /server account limit retry pending/);
   assert.match(source, /server account limit detected/);
+  assert.match(source, /extractSafeLimitText/);
+  assert.match(source, /properties\.info/);
   assert.match(source, /usage limit\|limit has been reached/);
   assert.match(source, /markActiveProfileLimited/);
 });
