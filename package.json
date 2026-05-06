@@ -4,16 +4,24 @@
   "description": "OpenCode OpenAI / ChatGPT account switcher for multi-account workflows",
   "type": "module",
   "bin": {
-    "opencode-as": "./dist/src/cli.js"
+    "opencode-as": "dist/src/cli.js"
   },
   "main": "./dist/src/index.js",
   "exports": {
     ".": "./dist/src/index.js"
   },
   "files": [
-    "dist",
+    "dist/src",
     "README.md"
   ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ceritahmt/opencode-account-switcher.git"
+  },
+  "homepage": "https://github.com/ceritahmt/opencode-account-switcher#readme",
+  "bugs": {
+    "url": "https://github.com/ceritahmt/opencode-account-switcher/issues"
+  },
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "test": "npm run build && node --test dist/test/**/*.test.js",

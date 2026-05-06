@@ -4,6 +4,8 @@ Package name: `@ceritahmt/opencode-as`.
 
 CLI name: `opencode-as`.
 
+Repository: https://github.com/ceritahmt/opencode-account-switcher
+
 OpenCode OpenAI account switcher for ChatGPT-style multi-account workflows.
 
 `opencode-as` helps manage multiple OpenAI / ChatGPT accounts in OpenCode by saving provider-specific auth objects as local profiles, switching between accounts from the native TUI, and handling usage-limit or auth-token errors with optional auto-switch.
