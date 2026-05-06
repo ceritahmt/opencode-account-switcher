@@ -15,3 +15,12 @@ test("native connect slash command remains registered", async () => {
 
   assert.match(plugin, /slash:\s*\{[\s\S]*name:\s*"as-connect"/);
 });
+
+test("only native account slash commands are registered", async () => {
+  const pluginPath = path.join(process.cwd(), ".opencode", "plugins", "as-tui.ts");
+  const plugin = await fs.readFile(pluginPath, "utf8");
+  const names = [...plugin.matchAll(/name:\s*"(as-[^"]+)"/g)].map((match) => match[1]);
+
+  assert.deepEqual(names, ["as-connect", "as-accounts"]);
+  assert.doesNotMatch(plugin, /as-save-help|as-login|opencode-as\.save-help/);
+});

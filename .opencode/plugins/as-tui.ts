@@ -87,7 +87,6 @@ const plugin = {
         category: "Account",
         slash: {
           name: "as-connect",
-          aliases: ["as-login"],
         },
         onSelect: () => {
           showConnectProfilePrompt(api);
@@ -103,21 +102,6 @@ const plugin = {
         },
         onSelect: () => {
           void showAccountsDialog(api);
-        },
-      },
-      {
-        title: "AS: Save connected OpenAI as profile",
-        value: "opencode-as.save-help",
-        description: "Show the save command after connecting OpenAI",
-        category: "Account",
-        slash: {
-          name: "as-save-help",
-        },
-        onSelect: () => {
-          api.ui.toast({
-            variant: "info",
-            message: "Run /as-connect, enter profile name, complete OpenAI connect, then use: npm run as -- use <name>.",
-          });
         },
       },
     ]);
