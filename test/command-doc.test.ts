@@ -10,14 +10,14 @@ test("legacy markdown command is removed", async () => {
 });
 
 test("native connect slash command remains registered", async () => {
-  const pluginPath = path.join(process.cwd(), ".opencode", "plugins", "as-tui.ts");
+  const pluginPath = path.join(process.cwd(), "src", "tui-plugin.ts");
   const plugin = await fs.readFile(pluginPath, "utf8");
 
   assert.match(plugin, /slash:\s*\{[\s\S]*name:\s*"as-connect"/);
 });
 
 test("only native account slash commands are registered", async () => {
-  const pluginPath = path.join(process.cwd(), ".opencode", "plugins", "as-tui.ts");
+  const pluginPath = path.join(process.cwd(), "src", "tui-plugin.ts");
   const plugin = await fs.readFile(pluginPath, "utf8");
   const names = [...plugin.matchAll(/name:\s*"((?:as|ac)-[^"]+)"/g)].map((match) => match[1]);
 

@@ -4,7 +4,7 @@ import path from "node:path";
 import test from "node:test";
 
 test("tui plugin registers native connect command", async () => {
-  const pluginPath = path.join(process.cwd(), ".opencode", "plugins", "as-tui.ts");
+  const pluginPath = path.join(process.cwd(), "src", "tui-plugin.ts");
   const source = await fs.readFile(pluginPath, "utf8");
 
   assert.match(source, /name:\s*"as-connect"/);
@@ -17,7 +17,7 @@ test("tui plugin registers native connect command", async () => {
 });
 
 test("tui plugin registers accounts command with action selection", async () => {
-  const pluginPath = path.join(process.cwd(), ".opencode", "plugins", "as-tui.ts");
+  const pluginPath = path.join(process.cwd(), "src", "tui-plugin.ts");
   const source = await fs.readFile(pluginPath, "utf8");
 
   assert.match(source, /name:\s*"as-accounts"/);
@@ -33,13 +33,16 @@ test("tui plugin registers accounts command with action selection", async () => 
 });
 
 test("tui plugin registers settings and usage-limit auto-switch hooks", async () => {
-  const pluginPath = path.join(process.cwd(), ".opencode", "plugins", "as-tui.ts");
+  const pluginPath = path.join(process.cwd(), "src", "tui-plugin.ts");
   const source = await fs.readFile(pluginPath, "utf8");
 
   assert.match(source, /name:\s*"ac-settings"/);
   assert.match(source, /Account Settings/);
   assert.match(source, /value:\s*"auto-on"/);
   assert.match(source, /value:\s*"auto-off"/);
+  assert.match(source, /Version: \$\{packageVersion\}/);
+  assert.match(source, /value:\s*"version"/);
+  assert.match(source, /loadPackageVersion/);
   assert.match(source, /value:\s*"clear-limits"/);
   assert.match(source, /api\.event\?\.on\("session\.next\.retried"/);
   assert.match(source, /api\.event\?\.on\("session\.error"/);
@@ -76,18 +79,19 @@ test("server plugin handles usage-limit events", async () => {
 });
 
 test("tui plugin loads opencode-as CLI module directly", async () => {
-  const pluginPath = path.join(process.cwd(), ".opencode", "plugins", "as-tui.ts");
+  const pluginPath = path.join(process.cwd(), "src", "tui-plugin.ts");
   const source = await fs.readFile(pluginPath, "utf8");
 
-  assert.match(source, /import\(pathToFileURL\(modulePath\)\.href\)/);
+  assert.match(source, /import\("\.\/index\.js"\)/);
+  assert.doesNotMatch(source, /pathToFileURL/);
   assert.doesNotMatch(source, /spawn\(process\.execPath/);
 });
 
-test("tui config loads as-tui plugin", async () => {
+test("tui config loads published package tui plugin", async () => {
   const configPath = path.join(process.cwd(), ".opencode", "tui.json");
   const config = JSON.parse(await fs.readFile(configPath, "utf8")) as { plugin: string[] };
 
-  assert.deepEqual(config.plugin, ["./plugins/as-tui.ts"]);
+  assert.deepEqual(config.plugin, ["@ceritahmt/opencode-as@latest"]);
 });
 
 test("opencode config loads server plugin", async () => {
@@ -95,4 +99,16 @@ test("opencode config loads server plugin", async () => {
   const config = JSON.parse(await fs.readFile(configPath, "utf8")) as { plugin: string[] };
 
   assert.deepEqual(config.plugin, ["@ceritahmt/opencode-as@latest"]);
+});
+
+test("package exposes separate server and tui plugin targets", async () => {
+  const packagePath = path.join(process.cwd(), "package.json");
+  const manifest = JSON.parse(await fs.readFile(packagePath, "utf8")) as {
+    exports: Record<string, string>;
+    "oc-plugin": [string, Record<string, unknown>][];
+  };
+
+  assert.equal(manifest.exports["./server"], "./dist/src/server-plugin.js");
+  assert.equal(manifest.exports["./tui"], "./dist/src/tui-plugin.js");
+  assert.deepEqual(manifest["oc-plugin"].map(([target]) => target), ["server", "tui"]);
 });

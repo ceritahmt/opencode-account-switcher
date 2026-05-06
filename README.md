@@ -37,21 +37,36 @@ The native interactive path is `/as-connect`, which triggers OpenCode's `provide
 
 ## OpenCode command integration
 
-`/as-connect`, `/as-accounts`, and `/ac-settings` are native TUI paths and are implemented via `.opencode/plugins/as-tui.ts`.
-Usage/auth error capture is exported from the package root as an OpenCode server plugin, so server-side retry/status events can mark the active profile as limited even when the TUI event bus does not receive the retry banner.
+`/as-connect`, `/as-accounts`, and `/ac-settings` are native TUI paths and are implemented by the package TUI plugin (`./tui`).
+Usage/auth error capture is exported as the package server plugin (`./server`), so server-side retry/status events can mark the active profile as limited even when the TUI event bus does not receive the retry banner.
 
-Published OpenCode server plugin config:
+Published setup needs both OpenCode config files:
+
+`.opencode/opencode.json`:
 
 ```json
 {
+  "$schema": "https://opencode.ai/config.json",
   "plugin": ["@ceritahmt/opencode-as@latest"]
 }
 ```
+
+`.opencode/tui.json`:
+
+```json
+{
+  "$schema": "https://opencode.ai/tui.json",
+  "plugin": ["@ceritahmt/opencode-as@latest"]
+}
+```
+
+`opencode.json` loads the server plugin. `tui.json` loads the native slash commands. If only `opencode.json` is configured, usage-limit detection may work but `/as-connect`, `/as-accounts`, and `/ac-settings` will not appear.
 
 It can be used alongside other OpenCode plugins:
 
 ```json
 {
+  "$schema": "https://opencode.ai/config.json",
   "plugin": [
     "@ceritahmt/opencode-as@latest",
     "oh-my-opencode-slim",
@@ -59,6 +74,8 @@ It can be used alongside other OpenCode plugins:
   ]
 }
 ```
+
+Keep `.opencode/tui.json` with `@ceritahmt/opencode-as@latest` as shown above for the TUI commands.
 
 Public OpenCode plugin APIs currently expose hooks and tools, so the reliable MVP integration is CLI + the native TUI commands listed above.
 

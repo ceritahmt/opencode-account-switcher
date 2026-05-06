@@ -77,3 +77,27 @@ test("stores auto-switch setting and limited profile state", async () => {
   assert.equal(summaries.find((profile) => profile.id === "a")?.limitedReason, "The usage limit has been reached");
   assert.equal((await findNextAvailableProfile(paths))?.id, "b");
 });
+
+test("infers active profile from current auth when config has no active profile", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "opencode-as-infer-active-test-"));
+  const env = {
+    ...process.env,
+    OPENCODE_AS_HOME: path.join(root, "data"),
+    OPENCODE_AUTH_PATH: path.join(root, "auth.json"),
+    XDG_DATA_HOME: path.join(root, "xdg-data"),
+  } as NodeJS.ProcessEnv;
+  const paths = getRuntimePaths(env);
+  const store = new ProfileStore(paths);
+
+  await fs.writeFile(paths.authPath, JSON.stringify({ openai: { type: "api", key: "secret-a" } }));
+  await store.saveCurrentProfile("a", "openai");
+  await fs.writeFile(paths.authPath, JSON.stringify({ openai: { type: "api", key: "secret-b" } }));
+  await store.saveCurrentProfile("b", "openai");
+
+  assert.equal(await markActiveProfileLimited(paths, "The usage limit has been reached"), "b");
+
+  const summaries = await listProfileSummaries(paths);
+  assert.equal(summaries.find((profile) => profile.id === "b")?.isActive, true);
+  assert.equal(summaries.find((profile) => profile.id === "b")?.isLimited, true);
+  assert.equal((await findNextAvailableProfile(paths))?.id, "a");
+});

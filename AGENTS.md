@@ -155,24 +155,28 @@ XDG_DATA_HOME=/tmp/xdg-data
 
 ### TUI Plugin
 
-- `as-tui.ts`
+- `src/tui-plugin.ts`
   - Native OpenCode TUI plugin.
+  - Package `./tui` export’u olarak publish edilir.
+  - Published TUI config içinde `.opencode/tui.json` `plugin: ["@ceritahmt/opencode-as@latest"]` şeklinde yüklenir.
+  - Local dev shim: `.opencode/plugins/as-tui.ts` built `dist/src/tui-plugin.js` default export’unu re-export eder.
   - `/as-connect`: OpenAI provider connect flow + auto-save.
   - `/as-accounts`: Profile listesi + action seçimi.
   - `/ac-settings`: Auto-switch ayarı ve limited marker temizleme.
   - TUI event bus üzerinden usage/rate-limit sinyali yakalamayı dener.
   - Server plugin tarafından yazılan persisted limited state’i polling ile görüp confirmation/auto-switch akışını başlatır.
   - TUI içinde CLI spawn etmek için `process.execPath` kullanma; OpenCode runtime’da bu `opencode` executable olabilir.
-  - Bunun yerine built module dynamic import kullan:
+  - Bunun yerine package içinde relative built module dynamic import kullan:
 
 ```ts
-import(pathToFileURL(path.join(process.cwd(), "dist", "src", "index.js")).href)
+import("./index.js")
 ```
 
 ### Server Plugin
 
 - `src/server-plugin.ts`
   - Package root default export olarak yayınlanan OpenCode server plugin.
+  - Package `./server` export’u olarak da publish edilir.
   - Published config içinde `.opencode/opencode.json` `plugin: ["@ceritahmt/opencode-as@latest"]` şeklinde yüklenir.
   - Local dev shim: `.opencode/plugins/as-server.ts` built `dist/src/server-plugin.js` default export’unu re-export eder.
   - `event` hook ile `session.next.retried`, `session.error`, `session.next.step.failed`, `session.status`, `message.updated` event’lerini dinler.
