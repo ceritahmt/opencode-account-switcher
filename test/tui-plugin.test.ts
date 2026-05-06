@@ -87,18 +87,26 @@ test("tui plugin loads opencode-as CLI module directly", async () => {
   assert.doesNotMatch(source, /spawn\(process\.execPath/);
 });
 
-test("tui config loads published package tui plugin", async () => {
+test("local tui config loads built tui plugin shim", async () => {
   const configPath = path.join(process.cwd(), ".opencode", "tui.json");
   const config = JSON.parse(await fs.readFile(configPath, "utf8")) as { plugin: string[] };
 
-  assert.deepEqual(config.plugin, ["@ceritahmt/opencode-as@latest"]);
+  assert.deepEqual(config.plugin, ["./plugins/as-tui.ts"]);
 });
 
-test("opencode config loads server plugin", async () => {
+test("local opencode config loads built server plugin shim", async () => {
   const configPath = path.join(process.cwd(), ".opencode", "opencode.json");
   const config = JSON.parse(await fs.readFile(configPath, "utf8")) as { plugin: string[] };
 
-  assert.deepEqual(config.plugin, ["@ceritahmt/opencode-as@latest"]);
+  assert.deepEqual(config.plugin, ["./plugins/as-server.ts"]);
+});
+
+test("local plugin shims load built package outputs", async () => {
+  const tuiShimPath = path.join(process.cwd(), ".opencode", "plugins", "as-tui.ts");
+  const serverShimPath = path.join(process.cwd(), ".opencode", "plugins", "as-server.ts");
+
+  assert.match(await fs.readFile(tuiShimPath, "utf8"), /dist\/src\/tui-plugin\.js/);
+  assert.match(await fs.readFile(serverShimPath, "utf8"), /dist\/src\/server-plugin\.js/);
 });
 
 test("package exposes separate server and tui plugin targets", async () => {

@@ -160,6 +160,7 @@ XDG_DATA_HOME=/tmp/xdg-data
   - Package `./tui` export’u olarak publish edilir.
   - Published TUI config içinde `.opencode/tui.json` `plugin: ["@ceritahmt/opencode-as@latest"]` şeklinde yüklenir.
   - Local dev shim: `.opencode/plugins/as-tui.ts` built `dist/src/tui-plugin.js` default export’unu re-export eder.
+  - Local dev config `.opencode/tui.json` `plugin: ["./plugins/as-tui.ts"]` kullanır; `npm run build` sonrası OpenCode restart gerekir.
   - `/as-connect`: OpenAI provider connect flow + auto-save.
   - `/as-accounts`: Profile listesi + action seçimi.
   - `/ac-settings`: Auto-switch ayarı ve limited marker temizleme.
@@ -179,6 +180,7 @@ import("./index.js")
   - Package `./server` export’u olarak da publish edilir.
   - Published config içinde `.opencode/opencode.json` `plugin: ["@ceritahmt/opencode-as@latest"]` şeklinde yüklenir.
   - Local dev shim: `.opencode/plugins/as-server.ts` built `dist/src/server-plugin.js` default export’unu re-export eder.
+  - Local dev config `.opencode/opencode.json` `plugin: ["./plugins/as-server.ts"]` kullanır; `npm run build` sonrası OpenCode restart gerekir.
   - `event` hook ile `session.next.retried`, `session.error`, `session.next.step.failed`, `session.status`, `message.updated` event’lerini dinler.
   - Usage/rate-limit text yakalanırsa `attempt #1` için sadece log yazar; `attempt #2` ve sonrası aktif profile’ı limited işaretler.
   - TUI plugin bu persisted limited marker’ı okuyup confirmation veya auto-switch akışını çalıştırır.

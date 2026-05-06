@@ -10,6 +10,30 @@ OpenCode OpenAI account switcher for ChatGPT-style multi-account workflows.
 
 `opencode-as` helps manage multiple OpenAI / ChatGPT accounts in OpenCode by saving provider-specific auth objects as local profiles, switching between accounts from the native TUI, and handling usage-limit or auth-token errors with optional auto-switch.
 
+## Installation
+
+Add `@ceritahmt/opencode-as@latest` to both OpenCode plugin config files.
+
+`.opencode/opencode.json` loads the server plugin:
+
+```json
+{
+  "$schema": "https://opencode.ai/config.json",
+  "plugin": ["@ceritahmt/opencode-as@latest"]
+}
+```
+
+`.opencode/tui.json` loads the TUI slash commands:
+
+```json
+{
+  "$schema": "https://opencode.ai/tui.json",
+  "plugin": ["@ceritahmt/opencode-as@latest"]
+}
+```
+
+If you already have plugins, keep them and add `@ceritahmt/opencode-as@latest` to the same `plugin` array. Restart OpenCode after changing config.
+
 ## MVP commands
 
 ```text
@@ -34,6 +58,19 @@ After OpenCode login/connect completes, switch profiles with `/as-accounts`:
 
 Interactive login is intentionally not run from the OpenCode markdown command because it is not a reliable TTY prompt environment.
 The native interactive path is `/as-connect`, which triggers OpenCode's `provider.connect` TUI command.
+
+## OpenCode usage
+
+1. Add the package to both OpenCode config files:
+   - `.opencode/opencode.json` for the server plugin
+   - `.opencode/tui.json` for the TUI slash commands
+2. Restart OpenCode so plugin config is reloaded.
+3. In the OpenCode TUI, run `/as-connect` and enter a profile name.
+4. Complete OpenCode's native OpenAI connect/login flow.
+5. Open `/as-accounts` to view saved profiles, switch accounts, reconnect expired auth, or delete a profile.
+6. Open `/ac-settings` to enable/disable auto-switch, clear limited markers, and see the installed package version.
+
+When OpenCode reports usage/rate-limit or auth-token errors, the plugin marks the current profile as limited. If auto-switch is disabled it asks before switching; if auto-switch is enabled it switches to the next available profile automatically.
 
 ## OpenCode command integration
 
@@ -76,6 +113,28 @@ It can be used alongside other OpenCode plugins:
 ```
 
 Keep `.opencode/tui.json` with `@ceritahmt/opencode-as@latest` as shown above for the TUI commands.
+
+For local development from this repository, use the checked-in local shims instead:
+
+`.opencode/opencode.json`:
+
+```json
+{
+  "$schema": "https://opencode.ai/config.json",
+  "plugin": ["./plugins/as-server.ts"]
+}
+```
+
+`.opencode/tui.json`:
+
+```json
+{
+  "$schema": "https://opencode.ai/tui.json",
+  "plugin": ["./plugins/as-tui.ts"]
+}
+```
+
+Run `npm run build`, then restart OpenCode so the shims load `dist/src/server-plugin.js` and `dist/src/tui-plugin.js`.
 
 Public OpenCode plugin APIs currently expose hooks and tools, so the reliable MVP integration is CLI + the native TUI commands listed above.
 
