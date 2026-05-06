@@ -85,13 +85,13 @@ async function runOpenCodeLogin(provider: string, method?: string): Promise<void
     throw new UserFacingError(
       [
         "Interactive login cannot run from this OpenCode markdown command.",
-        `Use /connect in OpenCode, or run in a terminal: opencode auth login --provider ${provider}`,
+        `Use /connect in OpenCode, or run in a terminal: opencode providers login --provider ${provider}`,
         `Then save it with: /as add <name> --provider ${provider} --current`,
       ].join("\n"),
     );
   }
 
-  const loginArgs = ["auth", "login", "--provider", provider];
+  const loginArgs = ["providers", "login", "--provider", provider];
   if (method) loginArgs.push("--method", method);
   const exitCode = await new Promise<number>((resolve, reject) => {
     const child = spawn("opencode", loginArgs, { stdio: "inherit", env: process.env });
@@ -99,7 +99,7 @@ async function runOpenCodeLogin(provider: string, method?: string): Promise<void
     child.on("close", (code) => resolve(code ?? 1));
   });
 
-  if (exitCode !== 0) throw new UserFacingError(`opencode auth login failed with exit code ${exitCode}`);
+  if (exitCode !== 0) throw new UserFacingError(`opencode providers login failed with exit code ${exitCode}`);
 }
 
 function ok(stdout: string): CliResult {

@@ -2,26 +2,8 @@
 description: Manage OpenCode auth profiles
 ---
 
-Run the local `opencode-as` CLI with the requested arguments and return only the CLI output.
+Return exactly this command output and nothing else. If it prints an error, show that error verbatim:
 
-Allowed forms:
-
-- no arguments: `npm run as --`
-- `help`: `npm run as -- help`
-- `ls`: `npm run as -- ls`
-- `who`: `npm run as -- who`
-- `providers`: `npm run as -- providers`
-- `add <name>`: `npm run as -- add <name>`
-- `add <name> --provider openai --current`: `npm run as -- add <name> --provider openai --current`
-- `use <name>`: `npm run as -- use <name>`
-- `<name>`: `npm run as -- <name>`
-- `rm <name>`: `npm run as -- rm <name>`
-
-Before running a shell command, validate profile names with this pattern only: `^[a-zA-Z0-9._-]{1,64}$`.
-Do not interpolate raw `$ARGUMENTS` into a shell command.
-
-Security rules:
-
-- Do not print or inspect auth token contents.
-- If the command fails, return only the sanitized error output.
-- Use `/as add <name> --current` for MVP profile creation.
+!`log_dir="${XDG_DATA_HOME:-$HOME/.local/share}/opencode"; if [ -n "$OPENCODE_AUTH_PATH" ]; then log_dir=$(dirname "$OPENCODE_AUTH_PATH"); fi; log_file="$log_dir/opencode-as-account.log"; mkdir -p "$log_dir" 2>/dev/null || true; build_log=$(mktemp); printf '[%s] /as markdown command invoked\n' "$(date '+%Y-%m-%dT%H:%M:%S%z')" >>"$log_file" 2>/dev/null || true; npm run build --silent >"$build_log" 2>&1; build_code=$?; if [ "$build_code" -ne 0 ]; then printf '[%s] /as build failed: %s\n' "$(date '+%Y-%m-%dT%H:%M:%S%z')" "$build_code" >>"$log_file" 2>/dev/null || true; cat "$build_log" >>"$log_file" 2>/dev/null || true; printf 'Error: opencode-as build failed with code %s\n\n' "$build_code"; cat "$build_log"; rm -f "$build_log"; exit 0; fi; rm -f "$build_log"; node dist/src/opencode-command.js <<'OPENCODE_AS_ARGS' 2>&1; exit 0
+$ARGUMENTS
+OPENCODE_AS_ARGS`

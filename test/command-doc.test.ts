@@ -9,4 +9,5 @@ test("as command doc avoids raw $ARGUMENTS shell interpolation", async () => {
 
   assert.doesNotMatch(doc, /^!.*\$ARGUMENTS/m);
   assert.doesNotMatch(doc, /\|[^\n]*\$ARGUMENTS/);
+  assert.match(doc, /<<'OPENCODE_AS_ARGS'/);
 });

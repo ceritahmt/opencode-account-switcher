@@ -36,6 +36,7 @@ export interface RuntimePaths {
   trashDir: string;
   lockPath: string;
   authPath: string;
+  logPath: string;
 }
 
 export type DriftStatus = "synced" | "changed outside /as" | "missing auth" | "no active profile" | "missing profile";

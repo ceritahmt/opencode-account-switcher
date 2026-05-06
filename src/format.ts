@@ -25,7 +25,7 @@ export function formatAddProviderSelection(profileName: string, provider = "open
     "  provider: OpenAI",
     "",
     "Terminal alternatifi:",
-    `  opencode auth login --provider ${provider}`,
+    `  opencode providers login --provider ${provider}`,
     "",
     "Login tamamlandıktan sonra sadece seçilen provider objesini kaydet:",
     `  /as add ${profileName} --provider ${provider} --current`,
