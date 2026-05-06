@@ -65,7 +65,7 @@ type TuiApi = {
 };
 
 type CliResult = { code: number; stdout: string; stderr: string };
-type AccountAction = "use" | "delete";
+type AccountAction = "use" | "reconnect" | "delete";
 type ProfileSummary = { id: string; provider: string; isActive: boolean; lastSelectedAt: string | null; expiresAt: string | null };
 type ProjectModule = {
   getRuntimePaths: (env?: NodeJS.ProcessEnv) => unknown;
@@ -200,6 +200,12 @@ function showAccountActionDialog(api: TuiApi, profile: ProfileSummary): void {
           category: "Action",
         },
         {
+          title: "Reconnect",
+          value: "reconnect",
+          description: "Refresh provider auth and update this profile",
+          category: "Action",
+        },
+        {
           title: "Delete",
           value: "delete",
           description: profile.isActive ? "Active profile cannot be deleted" : "Move this profile to trash",
@@ -211,6 +217,12 @@ function showAccountActionDialog(api: TuiApi, profile: ProfileSummary): void {
         if (option.value === "use") {
           api.ui.dialog.clear();
           void useProfileFromDialog(api, profile.id);
+          return;
+        }
+
+        if (option.value === "reconnect") {
+          api.ui.dialog.clear();
+          void reconnectProfileFromDialog(api, profile.id);
           return;
         }
 
@@ -270,6 +282,58 @@ async function deleteProfileFromDialog(api: TuiApi, profile: string): Promise<vo
   }
 
   api.ui.toast({ variant: "error", message: result.stderr || `Failed to delete profile: ${profile}`, duration: 10000 });
+}
+
+async function reconnectProfileFromDialog(api: TuiApi, profile: string): Promise<void> {
+  await appendDiagnosticLog("/as-accounts action selected", [`profile: ${profile}`, "action: reconnect"]);
+
+  const useResult = await runCli(["use", profile]);
+  if (useResult.code !== 0) {
+    await appendDiagnosticLog("/as-accounts reconnect failed before provider.connect", [
+      `profile: ${profile}`,
+      `stderr: ${summarizeForLog(useResult.stderr)}`,
+    ]);
+    api.ui.toast({ variant: "error", message: useResult.stderr || `Failed to use profile: ${profile}`, duration: 10000 });
+    return;
+  }
+
+  const authPath = resolveAuthPath();
+  const beforeHash = await readProviderHash(authPath, PROVIDER).catch(() => null);
+  await appendDiagnosticLog("/as-accounts reconnect triggering provider.connect", [
+    `profile: ${profile}`,
+    `beforeHash: ${beforeHash ? "present" : "missing"}`,
+  ]);
+
+  api.ui.toast({
+    variant: "info",
+    message: `Opening OpenAI reconnect for "${profile}". The profile will be updated after auth changes.`,
+  });
+  api.command.trigger("provider.connect");
+
+  const changed = await waitForProviderAuthChange(authPath, PROVIDER, beforeHash, api.lifecycle?.signal);
+  await appendDiagnosticLog("/as-accounts reconnect auth wait completed", [`profile: ${profile}`, `changed: ${changed}`]);
+  if (!changed) {
+    api.ui.toast({
+      variant: "warning",
+      message: `OpenAI auth was not detected/changed. Profile was not updated: ${profile}`,
+      duration: 10000,
+    });
+    return;
+  }
+
+  const updateResult = await runCli(["update", profile, "--provider", PROVIDER, "--current"]);
+  await appendDiagnosticLog("/as-accounts reconnect profile update completed", [
+    `profile: ${profile}`,
+    `exitCode: ${updateResult.code}`,
+    updateResult.stderr ? `stderr: ${summarizeForLog(updateResult.stderr)}` : "stderr: none",
+  ]);
+
+  if (updateResult.code === 0) {
+    api.ui.toast({ variant: "success", message: `Reconnected profile: ${profile}`, duration: 10000 });
+    return;
+  }
+
+  api.ui.toast({ variant: "error", message: updateResult.stderr || `Failed to reconnect profile: ${profile}`, duration: 10000 });
 }
 
 async function connectAndAutosave(api: TuiApi, profile: string): Promise<void> {

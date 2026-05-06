@@ -70,6 +70,43 @@ export class ProfileStore {
     });
   }
 
+  async updateCurrentProfile(name: string, providerInput = "openai"): Promise<ProfileMetadata> {
+    const id = validateProfileName(name);
+    const provider = parseProviderId(providerInput);
+    await ensureSecureDir(this.paths.dataDir);
+
+    return withLock(this.paths.lockPath, async () => {
+      const profileDir = this.profileDir(id);
+      if (!(await pathExists(profileDir))) throw new UserFacingError(`Profile not found: ${id}`);
+
+      const metadata = await this.readMetadata(id);
+      if (metadata.provider !== provider) {
+        throw new UserFacingError(`Profile provider mismatch: ${id} is ${metadata.provider}, not ${provider}`);
+      }
+
+      const authPath = path.join(profileDir, "auth.json");
+      const previousAuthRaw = await readTextFile(authPath);
+      const providerAuth = extractProviderAuth(await readTextFile(this.paths.authPath), provider);
+      const updatedMetadata: ProfileMetadata = {
+        ...metadata,
+        updatedAt: new Date().toISOString(),
+        authHash: providerAuth.hash,
+        authSource: "connect-flow",
+      };
+
+      try {
+        await atomicWriteFile(authPath, providerAuth.raw);
+        await this.writeMetadata(updatedMetadata);
+        await fsyncDirectory(profileDir);
+        return updatedMetadata;
+      } catch (error) {
+        await atomicWriteFile(authPath, previousAuthRaw).catch(() => undefined);
+        await this.writeMetadata(metadata).catch(() => undefined);
+        throw new UserFacingError(`Failed to update profile safely: ${(error as Error).message}`);
+      }
+    });
+  }
+
   async useProfile(name: string): Promise<ProfileMetadata> {
     const id = validateProfileName(name);
 

@@ -14,6 +14,15 @@ export function formatSavedProfile(metadata: ProfileMetadata): string {
   ].join("\n");
 }
 
+export function formatUpdatedProfile(metadata: ProfileMetadata): string {
+  return [
+    `Updating profile: ${metadata.id}`,
+    "Provider: OpenAI",
+    "Saved auth scope: selected provider object only",
+    `Profile updated: ${metadata.id}`,
+  ].join("\n");
+}
+
 export function formatAddProviderSelection(profileName: string, provider = "openai"): string {
   return [
     `Profile: ${profileName}`,
@@ -77,6 +86,7 @@ export function formatMenu(status: ActiveProfileStatus, profiles: ProfileMetadat
     "Actions:",
     "  /as add <name>",
     "  /as add <name> --provider openai --current",
+    "  /as update <name> --provider openai --current",
     "  /as use <name>",
     "  /as rm <name>",
     "  /as who",
@@ -94,6 +104,7 @@ export function formatHelp(): string {
     "  /as add <name>",
     "  /as add <name> --provider openai --current",
     "  /as add <name> --provider openai --login",
+    "  /as update <name> --provider openai --current",
     "  /as use <name>",
     "  /as <name>",
     "  /as rm <name>",

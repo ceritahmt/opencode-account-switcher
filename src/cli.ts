@@ -3,7 +3,7 @@ import { spawn } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { toSafeErrorMessage, UserFacingError } from "./errors.js";
-import { formatAddProviderSelection, formatHelp, formatList, formatMenu, formatProviders, formatRemovedProfile, formatSavedProfile, formatUsingProfile, formatWho } from "./format.js";
+import { formatAddProviderSelection, formatHelp, formatList, formatMenu, formatProviders, formatRemovedProfile, formatSavedProfile, formatUpdatedProfile, formatUsingProfile, formatWho } from "./format.js";
 import { appendProjectLog } from "./log.js";
 import { getRuntimePaths } from "./paths.js";
 import { ProfileStore } from "./profile-store.js";
@@ -80,6 +80,17 @@ async function runCliCommand(command: string | undefined, args: string[], store:
     const name = args[0];
     if (!name) throw new UserFacingError("Missing profile name. Usage: /as use <name>");
     return ok(formatUsingProfile(await store.useProfile(name)));
+  }
+
+  if (command === "update") {
+    const name = args[0] ? validateProfileName(args[0]) : undefined;
+    if (!name) throw new UserFacingError("Missing profile name. Usage: /as update <name> --provider openai --current");
+    const provider = getOption(args, "--provider") ?? "openai";
+    parseProviderId(provider);
+    if (!args.includes("--current")) {
+      throw new UserFacingError("Missing --current. Usage: /as update <name> --provider openai --current");
+    }
+    return ok(formatUpdatedProfile(await store.updateCurrentProfile(name, provider)));
   }
 
   if (command === "rm" || command === "remove") {
