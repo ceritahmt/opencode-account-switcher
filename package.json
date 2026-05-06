@@ -1,0 +1,37 @@
+{
+  "name": "opencode-as",
+  "version": "0.1.0",
+  "description": "OpenCode auth profile switcher for OpenAI accounts",
+  "type": "module",
+  "bin": {
+    "opencode-as": "./dist/src/cli.js"
+  },
+  "main": "./dist/src/index.js",
+  "exports": {
+    ".": "./dist/src/index.js"
+  },
+  "files": [
+    "dist",
+    ".opencode/commands/as.md",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "npm run build && node --test dist/test/**/*.test.js",
+    "as": "npm run build --silent && node dist/src/cli.js"
+  },
+  "keywords": [
+    "opencode",
+    "openai",
+    "auth",
+    "profiles"
+  ],
+  "license": "MIT",
+  "engines": {
+    "node": ">=20"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.3",
+    "typescript": "^5.8.3"
+  }
+}
