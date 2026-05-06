@@ -1,8 +1,8 @@
-import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 
 type ToastInput = {
   variant?: "info" | "success" | "warning" | "error";
@@ -42,7 +42,9 @@ type TuiApi = {
   };
 };
 
-const PENDING_PROFILE_KEY = "opencode-as.pendingProfile";
+type CliResult = { code: number; stdout: string; stderr: string };
+type CliModule = { runCli: (argv: string[], env?: NodeJS.ProcessEnv) => Promise<CliResult> };
+
 const PROVIDER = "openai";
 const PROFILE_NAME_PATTERN = /^[a-zA-Z0-9._-]{1,64}$/;
 
@@ -74,7 +76,7 @@ const plugin = {
         onSelect: () => {
           api.ui.toast({
             variant: "info",
-            message: "Run /as-connect, enter profile name, complete OpenAI connect, then use /as use <name>.",
+            message: "Run /as-connect, enter profile name, complete OpenAI connect, then use: npm run as -- use <name>.",
           });
         },
       },
@@ -85,9 +87,9 @@ const plugin = {
 function showConnectProfilePrompt(api: TuiApi): void {
   api.ui.dialog.replace(() =>
     api.ui.DialogPrompt({
-      title: "Save OpenAI profile as",
+      title: "Profile Name",
       placeholder: "profile-name",
-      value: api.kv?.get<string>(PENDING_PROFILE_KEY, "") ?? "",
+      value: "",
       onConfirm: (raw) => {
         const profile = raw.trim();
         if (!PROFILE_NAME_PATTERN.test(profile) || profile === "." || profile === "..") {
@@ -98,7 +100,6 @@ function showConnectProfilePrompt(api: TuiApi): void {
           return;
         }
 
-        api.kv?.set(PENDING_PROFILE_KEY, profile);
         api.ui.dialog.clear();
         void connectAndAutosave(api, profile);
       },
@@ -110,31 +111,44 @@ function showConnectProfilePrompt(api: TuiApi): void {
 }
 
 async function connectAndAutosave(api: TuiApi, profile: string): Promise<void> {
+  await appendDiagnosticLog("/as-connect started", [`profile: ${profile}`]);
+
   const authPath = resolveAuthPath();
   const beforeHash = await readProviderHash(authPath, PROVIDER).catch(() => null);
+  await appendDiagnosticLog("/as-connect auth snapshot captured", [
+    `authPath: ${authPath}`,
+    `provider: ${PROVIDER}`,
+    `beforeHash: ${beforeHash ? "present" : "missing"}`,
+  ]);
 
   api.ui.toast({
     variant: "info",
     message: `Opening OpenAI connect. Profile will be saved as "${profile}" after auth changes.`,
   });
 
+  await appendDiagnosticLog("/as-connect triggering provider.connect");
   api.command.trigger("provider.connect");
 
   const changed = await waitForProviderAuthChange(authPath, PROVIDER, beforeHash, api.lifecycle?.signal);
+  await appendDiagnosticLog("/as-connect provider auth wait completed", [`changed: ${changed}`]);
   if (!changed) {
     api.ui.toast({
       variant: "warning",
-      message: `OpenAI auth was not detected/changed. After connecting, run: /as add ${profile} --provider openai --current`,
+      message: `OpenAI auth was not detected/changed. After connecting, run: npm run as -- add ${profile} --provider openai --current`,
       duration: 10000,
     });
     return;
   }
 
   const result = await runCli(["add", profile, "--provider", PROVIDER, "--current"]);
+  await appendDiagnosticLog("/as-connect profile save completed", [
+    `exitCode: ${result.code}`,
+    result.stderr ? `stderr: ${summarizeForLog(result.stderr)}` : "stderr: none",
+  ]);
   if (result.code === 0) {
     api.ui.toast({
       variant: "success",
-      message: `Saved OpenAI profile "${profile}". Use it with: /as use ${profile}`,
+      message: `Saved OpenAI profile "${profile}". Use it with: npm run as -- use ${profile}`,
       duration: 10000,
     });
     return;
@@ -172,28 +186,18 @@ async function readProviderHash(authPath: string, provider: string): Promise<str
   return createHash("sha256").update(JSON.stringify(sortForJson(value))).digest("hex");
 }
 
-async function runCli(args: string[]): Promise<{ code: number; stdout: string; stderr: string }> {
-  return new Promise((resolve) => {
-    const child = spawn(process.execPath, [path.join(process.cwd(), "dist", "src", "cli.js"), ...args], {
-      cwd: process.cwd(),
-      env: process.env,
-      stdio: ["ignore", "pipe", "pipe"],
-      shell: false,
-    });
-
-    const stdout: Buffer[] = [];
-    const stderr: Buffer[] = [];
-    child.stdout.on("data", (chunk) => stdout.push(Buffer.from(chunk)));
-    child.stderr.on("data", (chunk) => stderr.push(Buffer.from(chunk)));
-    child.on("error", (error) => resolve({ code: 1, stdout: "", stderr: error.message }));
-    child.on("close", (code) =>
-      resolve({
-        code: code ?? 1,
-        stdout: Buffer.concat(stdout).toString("utf8"),
-        stderr: Buffer.concat(stderr).toString("utf8"),
-      }),
-    );
-  });
+async function runCli(args: string[]): Promise<CliResult> {
+  try {
+    const modulePath = path.join(process.cwd(), "dist", "src", "cli.js");
+    const cli = (await import(pathToFileURL(modulePath).href)) as CliModule;
+    return await cli.runCli(args, process.env);
+  } catch (error) {
+    return {
+      code: 1,
+      stdout: "",
+      stderr: `Failed to load opencode-as CLI. Run npm run build first. ${(error as Error).message}`,
+    };
+  }
 }
 
 function resolveAuthPath(): string {
@@ -211,6 +215,53 @@ function expandHome(input: string): string {
 
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function appendDiagnosticLog(title: string, details: string[] = []): Promise<void> {
+  try {
+    const logPath = resolveLogPath();
+    await fs.mkdir(path.dirname(logPath), { recursive: true, mode: 0o700 });
+    const body = `${JSON.stringify({
+      time: new Date().toISOString(),
+      level: "info",
+      event: redact(title),
+      details: details.map(redact),
+    })}\n`;
+    await fs.appendFile(logPath, body, { mode: 0o600 });
+    await fs.chmod(logPath, 0o600).catch(() => undefined);
+  } catch {
+    // Diagnostic logging must never break /as-connect.
+  }
+}
+
+function resolveLogPath(): string {
+  return path.join(resolveProjectDataDir(), "logs", `log${formatDate(new Date())}.log`);
+}
+
+function resolveProjectDataDir(): string {
+  if (process.env.OPENCODE_AS_HOME) return path.resolve(expandHome(process.env.OPENCODE_AS_HOME));
+
+  const dataHome = process.env.XDG_DATA_HOME ? path.resolve(expandHome(process.env.XDG_DATA_HOME)) : path.join(os.homedir(), ".local", "share");
+  return path.join(dataHome, "opencode", "opencode-as-account");
+}
+
+function formatDate(date: Date): string {
+  const year = date.getFullYear().toString().padStart(4, "0");
+  const month = (date.getMonth() + 1).toString().padStart(2, "0");
+  const day = date.getDate().toString().padStart(2, "0");
+  return `${year}${month}${day}`;
+}
+
+function redact(input: string): string {
+  return input
+    .replace(/(sk-[a-zA-Z0-9_-]{8,})/g, "[redacted-openai-key]")
+    .replace(/(Bearer\s+)[a-zA-Z0-9._-]+/gi, "$1[redacted-token]")
+    .replace(/("(?:key|token|access|refresh|secret)"\s*:\s*")[^"]+(")/gi, "$1[redacted]$2");
+}
+
+function summarizeForLog(input: string): string {
+  const singleLine = input.replace(/\s+/g, " ").trim();
+  return singleLine.length > 500 ? `${singleLine.slice(0, 500)}...` : singleLine;
 }
 
 function sortForJson(value: unknown): unknown {

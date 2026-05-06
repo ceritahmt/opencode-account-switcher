@@ -158,6 +158,7 @@ async function createFixture(): Promise<{ env: NodeJS.ProcessEnv; authPath: stri
       ...process.env,
       OPENCODE_AS_HOME: path.join(root, "data"),
       OPENCODE_AUTH_PATH: authPath,
+      XDG_DATA_HOME: path.join(root, "xdg-data"),
     },
   };
 }

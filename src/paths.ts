@@ -10,11 +10,9 @@ export function expandHome(input: string): string {
 }
 
 export function getRuntimePaths(env: NodeJS.ProcessEnv = process.env): RuntimePaths {
-  const dataDir = path.resolve(
-    expandHome(env.OPENCODE_AS_HOME ?? path.join("~", ".config", "opencode", "plugins", "opencode-as")),
-  );
+  const dataDir = getProjectDataDir(env);
   const authPath = path.resolve(expandHome(env.OPENCODE_AUTH_PATH ?? defaultAuthPath(env)));
-  const logPath = path.join(path.dirname(authPath), "opencode-as-account.log");
+  const logPath = getDailyLogPath(env);
 
   return {
     dataDir,
@@ -28,7 +26,25 @@ export function getRuntimePaths(env: NodeJS.ProcessEnv = process.env): RuntimePa
   };
 }
 
+export function getDailyLogPath(env: NodeJS.ProcessEnv = process.env, now: Date = new Date()): string {
+  return path.join(getProjectDataDir(env), "logs", `log${formatDate(now)}.log`);
+}
+
 function defaultAuthPath(env: NodeJS.ProcessEnv): string {
-  const dataHome = env.XDG_DATA_HOME ? expandHome(env.XDG_DATA_HOME) : path.join(os.homedir(), ".local", "share");
-  return path.join(dataHome, "opencode", "auth.json");
+  return path.join(getDataHome(env), "opencode", "auth.json");
+}
+
+function getDataHome(env: NodeJS.ProcessEnv): string {
+  return env.XDG_DATA_HOME ? path.resolve(expandHome(env.XDG_DATA_HOME)) : path.join(os.homedir(), ".local", "share");
+}
+
+function getProjectDataDir(env: NodeJS.ProcessEnv): string {
+  return path.resolve(expandHome(env.OPENCODE_AS_HOME ?? path.join(getDataHome(env), "opencode", "opencode-as-account")));
+}
+
+function formatDate(date: Date): string {
+  const year = date.getFullYear().toString().padStart(4, "0");
+  const month = (date.getMonth() + 1).toString().padStart(2, "0");
+  const day = date.getDate().toString().padStart(2, "0");
+  return `${year}${month}${day}`;
 }

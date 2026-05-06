@@ -3,11 +3,15 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import test from "node:test";
 
-test("as command doc avoids raw $ARGUMENTS shell interpolation", async () => {
+test("/as markdown command is removed", async () => {
   const docPath = path.join(process.cwd(), ".opencode", "commands", "as.md");
-  const doc = await fs.readFile(docPath, "utf8");
 
-  assert.doesNotMatch(doc, /^!.*\$ARGUMENTS/m);
-  assert.doesNotMatch(doc, /\|[^\n]*\$ARGUMENTS/);
-  assert.match(doc, /<<'OPENCODE_AS_ARGS'/);
+  await assert.rejects(fs.access(docPath));
+});
+
+test("/as-connect native slash command remains registered", async () => {
+  const pluginPath = path.join(process.cwd(), ".opencode", "plugins", "as-tui.ts");
+  const plugin = await fs.readFile(pluginPath, "utf8");
+
+  assert.match(plugin, /slash:\s*\{[\s\S]*name:\s*"as-connect"/);
 });

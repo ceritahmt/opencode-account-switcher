@@ -12,7 +12,6 @@
   },
   "files": [
     "dist",
-    ".opencode/commands/as.md",
     "README.md"
   ],
   "scripts": {

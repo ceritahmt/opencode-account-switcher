@@ -4,6 +4,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { toSafeErrorMessage, UserFacingError } from "./errors.js";
 import { formatAddProviderSelection, formatHelp, formatList, formatMenu, formatProviders, formatRemovedProfile, formatSavedProfile, formatUsingProfile, formatWho } from "./format.js";
+import { appendProjectLog } from "./log.js";
 import { getRuntimePaths } from "./paths.js";
 import { ProfileStore } from "./profile-store.js";
 import { parseProviderId } from "./provider-auth.js";
@@ -16,60 +17,79 @@ export interface CliResult {
 }
 
 export async function runCli(argv: string[], env: NodeJS.ProcessEnv = process.env): Promise<CliResult> {
-  const store = new ProfileStore(getRuntimePaths(env));
+  const paths = getRuntimePaths(env);
+  const store = new ProfileStore(paths);
   const [command, ...args] = argv;
 
+  await appendProjectLog(paths, {
+    event: "cli command started",
+    details: [`command: ${command ?? "menu"}`, `args: ${summarizeArgs(args)}`],
+  });
+
   try {
-    if (!command) {
-      const [status, profiles] = await Promise.all([store.getActiveStatus(), store.listProfiles()]);
-      return ok(formatMenu(status, profiles));
-    }
+    const result = await runCliCommand(command, args, store);
+    await appendProjectLog(paths, {
+      event: "cli command completed",
+      details: [`command: ${command ?? "menu"}`, `exitCode: ${result.code}`, `stdout: ${result.stdout ? "present" : "empty"}`],
+    });
+    return result;
+  } catch (error) {
+    const message = toSafeErrorMessage(error);
+    await appendProjectLog(paths, {
+      level: "error",
+      event: "cli command failed",
+      details: [`command: ${command ?? "menu"}`, `error: ${message}`],
+    });
+    return { code: 1, stdout: "", stderr: message };
+  }
+}
 
-    if (command === "help" || command === "--help" || command === "-h") return ok(formatHelp());
-    if (command === "providers") return ok(formatProviders());
+async function runCliCommand(command: string | undefined, args: string[], store: ProfileStore): Promise<CliResult> {
+  if (!command) {
+    const [status, profiles] = await Promise.all([store.getActiveStatus(), store.listProfiles()]);
+    return ok(formatMenu(status, profiles));
+  }
 
-    if (command === "ls" || command === "list") {
-      const [status, profiles] = await Promise.all([store.getActiveStatus(), store.listProfiles()]);
-      return ok(formatList(profiles, status.activeProfile));
-    }
+  if (command === "help" || command === "--help" || command === "-h") return ok(formatHelp());
+  if (command === "providers") return ok(formatProviders());
 
-    if (command === "who") return ok(formatWho(await store.getActiveStatus()));
+  if (command === "ls" || command === "list") {
+    const [status, profiles] = await Promise.all([store.getActiveStatus(), store.listProfiles()]);
+    return ok(formatList(profiles, status.activeProfile));
+  }
 
-    if (command === "add") {
-      const name = args[0] ? validateProfileName(args[0]) : undefined;
-      if (!name) throw new UserFacingError("Missing profile name. Usage: /as add <name>");
-      const provider = getOption(args, "--provider") ?? "openai";
-      parseProviderId(provider);
+  if (command === "who") return ok(formatWho(await store.getActiveStatus()));
 
-      if (args.includes("--login")) {
-        await runOpenCodeLogin(provider, getOption(args, "--method"));
-        return ok(formatSavedProfile(await store.saveCurrentProfile(name, provider)));
-      }
+  if (command === "add") {
+    const name = args[0] ? validateProfileName(args[0]) : undefined;
+    if (!name) throw new UserFacingError("Missing profile name. Usage: /as add <name>");
+    const provider = getOption(args, "--provider") ?? "openai";
+    parseProviderId(provider);
 
-      if (!args.includes("--current")) {
-        return ok(formatAddProviderSelection(name, provider));
-      }
-
+    if (args.includes("--login")) {
+      await runOpenCodeLogin(provider, getOption(args, "--method"));
       return ok(formatSavedProfile(await store.saveCurrentProfile(name, provider)));
     }
 
-    if (command === "use") {
-      const name = args[0];
-      if (!name) throw new UserFacingError("Missing profile name. Usage: /as use <name>");
-      return ok(formatUsingProfile(await store.useProfile(name)));
-    }
+    if (!args.includes("--current")) return ok(formatAddProviderSelection(name, provider));
 
-    if (command === "rm" || command === "remove") {
-      const name = args[0];
-      if (!name) throw new UserFacingError("Missing profile name. Usage: /as rm <name>");
-      return ok(formatRemovedProfile(await store.removeProfile(name)));
-    }
-
-    if (args.length === 0) return ok(formatUsingProfile(await store.useProfile(command)));
-    throw new UserFacingError(`Unknown command: ${command}`);
-  } catch (error) {
-    return { code: 1, stdout: "", stderr: toSafeErrorMessage(error) };
+    return ok(formatSavedProfile(await store.saveCurrentProfile(name, provider)));
   }
+
+  if (command === "use") {
+    const name = args[0];
+    if (!name) throw new UserFacingError("Missing profile name. Usage: /as use <name>");
+    return ok(formatUsingProfile(await store.useProfile(name)));
+  }
+
+  if (command === "rm" || command === "remove") {
+    const name = args[0];
+    if (!name) throw new UserFacingError("Missing profile name. Usage: /as rm <name>");
+    return ok(formatRemovedProfile(await store.removeProfile(name)));
+  }
+
+  if (args.length === 0) return ok(formatUsingProfile(await store.useProfile(command)));
+  throw new UserFacingError(`Unknown command: ${command}`);
 }
 
 function getOption(args: string[], option: string): string | undefined {
@@ -100,6 +120,12 @@ async function runOpenCodeLogin(provider: string, method?: string): Promise<void
   });
 
   if (exitCode !== 0) throw new UserFacingError(`opencode providers login failed with exit code ${exitCode}`);
+}
+
+function summarizeArgs(args: string[]): string {
+  if (args.length === 0) return "<none>";
+  const value = args.join(" ");
+  return value.length > 200 ? `${value.slice(0, 200)}...` : value;
 }
 
 function ok(stdout: string): CliResult {
