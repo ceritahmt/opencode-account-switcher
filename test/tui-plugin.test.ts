@@ -16,6 +16,20 @@ test("tui plugin registers native connect command", async () => {
   assert.match(source, /Saved OpenAI profile/);
 });
 
+test("tui plugin registers accounts command with action selection", async () => {
+  const pluginPath = path.join(process.cwd(), ".opencode", "plugins", "as-tui.ts");
+  const source = await fs.readFile(pluginPath, "utf8");
+
+  assert.match(source, /name:\s*"as-accounts"/);
+  assert.match(source, /DialogSelect/);
+  assert.match(source, /Select action/);
+  assert.match(source, /value:\s*"use"/);
+  assert.match(source, /value:\s*"delete"/);
+  assert.match(source, /DialogConfirm/);
+  assert.match(source, /runCli\(\["use", profile\]\)/);
+  assert.match(source, /runCli\(\["rm", profile\]\)/);
+});
+
 test("tui plugin loads opencode-as CLI module directly", async () => {
   const pluginPath = path.join(process.cwd(), ".opencode", "plugins", "as-tui.ts");
   const source = await fs.readFile(pluginPath, "utf8");

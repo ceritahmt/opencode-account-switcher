@@ -6,14 +6,18 @@ OpenCode auth profile switcher for provider-specific OpenAI auth objects.
 
 ```text
 /as-connect
+/as-accounts
 ```
 
 `/as-connect` opens a native TUI prompt for the profile name, then opens OpenCode's native interactive provider login/connect dialog through the TUI plugin. After OpenAI auth changes, it auto-saves that provider object as the chosen profile.
 
-After OpenCode login/connect completes, switch profiles with the CLI:
+`/as-accounts` opens a native TUI account list. Select a profile first, then choose an action such as `Use` or `Delete`. If the saved provider auth contains an expiry field, it is shown in the list.
+
+After OpenCode login/connect completes, switch profiles with `/as-accounts` or the CLI:
 
 ```text
 /as-connect
+/as-accounts
 npm run as -- use work
 ```
 
@@ -34,7 +38,7 @@ The native interactive path is `/as-connect`, which triggers OpenCode's `provide
 
 ## OpenCode command integration
 
-`/as-connect` is the native TUI path and is implemented via `.opencode/plugins/as-tui.ts`.
+`/as-connect` and `/as-accounts` are native TUI paths and are implemented via `.opencode/plugins/as-tui.ts`.
 
 Public OpenCode plugin APIs currently expose hooks and tools, but not stable slash-command registration for `/as`. The reliable MVP integration is therefore CLI + native `/as-connect`.
 

@@ -11,6 +11,15 @@ type ToastInput = {
   duration?: number;
 };
 
+type DialogSelectOption<Value = unknown> = {
+  title: string;
+  value: Value;
+  description?: string;
+  category?: string;
+  disabled?: boolean;
+  onSelect?: () => void;
+};
+
 type TuiApi = {
   command: {
     register: (cb: () => unknown[]) => void;
@@ -26,6 +35,19 @@ type TuiApi = {
       busyText?: string;
       onConfirm?: (value: string) => void;
       onCancel?: () => void;
+    }) => unknown;
+    DialogConfirm: (props: {
+      title: string;
+      message: string;
+      onConfirm?: () => void;
+      onCancel?: () => void;
+    }) => unknown;
+    DialogSelect: <Value = unknown>(props: {
+      title: string;
+      placeholder?: string;
+      options: DialogSelectOption<Value>[];
+      onSelect?: (option: DialogSelectOption<Value>) => void;
+      current?: Value;
     }) => unknown;
     toast: (input: ToastInput) => void;
     dialog: {
@@ -43,7 +65,13 @@ type TuiApi = {
 };
 
 type CliResult = { code: number; stdout: string; stderr: string };
-type CliModule = { runCli: (argv: string[], env?: NodeJS.ProcessEnv) => Promise<CliResult> };
+type AccountAction = "use" | "delete";
+type ProfileSummary = { id: string; provider: string; isActive: boolean; lastSelectedAt: string | null; expiresAt: string | null };
+type ProjectModule = {
+  getRuntimePaths: (env?: NodeJS.ProcessEnv) => unknown;
+  listProfileSummaries: (paths: unknown) => Promise<ProfileSummary[]>;
+  runCli: (argv: string[], env?: NodeJS.ProcessEnv) => Promise<CliResult>;
+};
 
 const PROVIDER = "openai";
 const PROFILE_NAME_PATTERN = /^[a-zA-Z0-9._-]{1,64}$/;
@@ -63,6 +91,18 @@ const plugin = {
         },
         onSelect: () => {
           showConnectProfilePrompt(api);
+        },
+      },
+      {
+        title: "AS: Accounts",
+        value: "opencode-as.accounts",
+        description: "List saved profiles and switch active account",
+        category: "Account",
+        slash: {
+          name: "as-accounts",
+        },
+        onSelect: () => {
+          void showAccountsDialog(api);
         },
       },
       {
@@ -108,6 +148,128 @@ function showConnectProfilePrompt(api: TuiApi): void {
       },
     }),
   );
+}
+
+async function showAccountsDialog(api: TuiApi): Promise<void> {
+  await appendDiagnosticLog("/as-accounts started");
+
+  let profiles: ProfileSummary[];
+  try {
+    profiles = await listProfileSummaries();
+  } catch (error) {
+    const message = toErrorMessage(error);
+    await appendDiagnosticLog("/as-accounts failed to list profiles", [`error: ${message}`]);
+    api.ui.toast({ variant: "error", message });
+    return;
+  }
+
+  if (profiles.length === 0) {
+    api.ui.toast({ variant: "info", message: "No profiles found. Create one with /as-connect." });
+    return;
+  }
+
+  api.ui.dialog.replace(() =>
+    api.ui.DialogSelect<string>({
+      title: "Accounts",
+      placeholder: "Select profile",
+      current: profiles.find((profile) => profile.isActive)?.id,
+      options: profiles.map((profile) => ({
+        title: `${profile.isActive ? "●" : "○"} ${profile.id}`,
+        value: profile.id,
+        description: formatProfileDescription(profile),
+        category: profile.provider,
+      })),
+      onSelect: (option) => {
+        const profile = profiles.find((item) => item.id === option.value);
+        if (profile) showAccountActionDialog(api, profile);
+      },
+    }),
+  );
+}
+
+function showAccountActionDialog(api: TuiApi, profile: ProfileSummary): void {
+  api.ui.dialog.replace(() =>
+    api.ui.DialogSelect<AccountAction>({
+      title: profile.id,
+      placeholder: "Select action",
+      options: [
+        {
+          title: "Use",
+          value: "use",
+          description: "Switch OpenCode auth to this profile",
+          category: "Action",
+        },
+        {
+          title: "Delete",
+          value: "delete",
+          description: profile.isActive ? "Active profile cannot be deleted" : "Move this profile to trash",
+          category: "Action",
+          disabled: profile.isActive,
+        },
+      ],
+      onSelect: (option) => {
+        if (option.value === "use") {
+          api.ui.dialog.clear();
+          void useProfileFromDialog(api, profile.id);
+          return;
+        }
+
+        showDeleteProfileConfirm(api, profile.id);
+      },
+    }),
+  );
+}
+
+function showDeleteProfileConfirm(api: TuiApi, profile: string): void {
+  api.ui.dialog.replace(() =>
+    api.ui.DialogConfirm({
+      title: `Delete ${profile}?`,
+      message: "This moves the profile to trash. It does not securely delete stored auth data.",
+      onConfirm: () => {
+        api.ui.dialog.clear();
+        void deleteProfileFromDialog(api, profile);
+      },
+      onCancel: () => {
+        void showAccountsDialog(api);
+      },
+    }),
+  );
+}
+
+async function useProfileFromDialog(api: TuiApi, profile: string): Promise<void> {
+  await appendDiagnosticLog("/as-accounts action selected", [`profile: ${profile}`, "action: use"]);
+
+  const result = await runCli(["use", profile]);
+  await appendDiagnosticLog("/as-accounts profile switch completed", [
+    `profile: ${profile}`,
+    `exitCode: ${result.code}`,
+    result.stderr ? `stderr: ${summarizeForLog(result.stderr)}` : "stderr: none",
+  ]);
+
+  if (result.code === 0) {
+    api.ui.toast({ variant: "success", message: `Using profile: ${profile}`, duration: 8000 });
+    return;
+  }
+
+  api.ui.toast({ variant: "error", message: result.stderr || `Failed to use profile: ${profile}`, duration: 10000 });
+}
+
+async function deleteProfileFromDialog(api: TuiApi, profile: string): Promise<void> {
+  await appendDiagnosticLog("/as-accounts action selected", [`profile: ${profile}`, "action: delete"]);
+
+  const result = await runCli(["rm", profile]);
+  await appendDiagnosticLog("/as-accounts profile delete completed", [
+    `profile: ${profile}`,
+    `exitCode: ${result.code}`,
+    result.stderr ? `stderr: ${summarizeForLog(result.stderr)}` : "stderr: none",
+  ]);
+
+  if (result.code === 0) {
+    api.ui.toast({ variant: "success", message: `Deleted profile: ${profile}`, duration: 8000 });
+    return;
+  }
+
+  api.ui.toast({ variant: "error", message: result.stderr || `Failed to delete profile: ${profile}`, duration: 10000 });
 }
 
 async function connectAndAutosave(api: TuiApi, profile: string): Promise<void> {
@@ -188,9 +350,8 @@ async function readProviderHash(authPath: string, provider: string): Promise<str
 
 async function runCli(args: string[]): Promise<CliResult> {
   try {
-    const modulePath = path.join(process.cwd(), "dist", "src", "cli.js");
-    const cli = (await import(pathToFileURL(modulePath).href)) as CliModule;
-    return await cli.runCli(args, process.env);
+    const project = await loadProjectModule();
+    return await project.runCli(args, process.env);
   } catch (error) {
     return {
       code: 1,
@@ -198,6 +359,16 @@ async function runCli(args: string[]): Promise<CliResult> {
       stderr: `Failed to load opencode-as CLI. Run npm run build first. ${(error as Error).message}`,
     };
   }
+}
+
+async function listProfileSummaries(): Promise<ProfileSummary[]> {
+  const project = await loadProjectModule();
+  return project.listProfileSummaries(project.getRuntimePaths(process.env));
+}
+
+async function loadProjectModule(): Promise<ProjectModule> {
+  const modulePath = path.join(process.cwd(), "dist", "src", "index.js");
+  return (await import(pathToFileURL(modulePath).href)) as ProjectModule;
 }
 
 function resolveAuthPath(): string {
@@ -262,6 +433,17 @@ function redact(input: string): string {
 function summarizeForLog(input: string): string {
   const singleLine = input.replace(/\s+/g, " ").trim();
   return singleLine.length > 500 ? `${singleLine.slice(0, 500)}...` : singleLine;
+}
+
+function formatProfileDescription(profile: ProfileSummary): string {
+  const parts = [profile.provider];
+  if (profile.expiresAt) parts.push(`expires: ${profile.expiresAt}`);
+  if (profile.lastSelectedAt) parts.push(`last used: ${profile.lastSelectedAt}`);
+  return parts.join(" · ");
+}
+
+function toErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
 
 function sortForJson(value: unknown): unknown {
