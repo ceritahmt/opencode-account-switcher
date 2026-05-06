@@ -55,6 +55,12 @@ type TuiApi = {
       clear: () => void;
     };
   };
+  slots?: {
+    register: (plugin: { order?: number; slots: { home_footer: () => unknown } }) => unknown;
+  };
+  renderer?: {
+    requestRender?: () => void;
+  };
   kv?: {
     get: <Value = unknown>(key: string, fallback?: Value) => Value;
     set: (key: string, value: unknown) => void;
@@ -98,6 +104,7 @@ const PROVIDER = "openai";
 const PROFILE_NAME_PATTERN = /^[a-zA-Z0-9._-]{1,64}$/;
 let lastLimitHandledAt = 0;
 let lastPersistedLimitHandledKey: string | null = null;
+let homeFooterStatus: string | null = null;
 
 const ACCOUNT_SWITCH_TRIGGER_RE =
   /usage limit|limit has been reached/i;
@@ -107,6 +114,7 @@ const plugin = {
   tui: async (api: TuiApi) => {
     registerLimitDetection(api);
     registerPersistedLimitPolling(api);
+    registerHomeFooter(api);
 
     api.command.register(() => [
       {
@@ -198,6 +206,41 @@ function registerPersistedLimitPolling(api: TuiApi): void {
   api.lifecycle?.onDispose?.(() => {
     clearInterval(interval);
   });
+}
+
+function registerHomeFooter(api: TuiApi): void {
+  if (!api.slots?.register) return;
+
+  void refreshHomeFooterStatus(api);
+  const interval = setInterval(() => {
+    void refreshHomeFooterStatus(api);
+  }, 5000);
+
+  api.lifecycle?.onDispose?.(() => {
+    clearInterval(interval);
+  });
+
+  api.slots.register({
+    order: 900,
+    slots: {
+      home_footer() {
+        return homeFooterStatus;
+      },
+    },
+  });
+}
+
+async function refreshHomeFooterStatus(api: TuiApi): Promise<void> {
+  const profiles = await listProfileSummaries().catch(async (error) => {
+    await appendDiagnosticLog("home footer profile lookup failed", [`error: ${toErrorMessage(error)}`]);
+    return [] as ProfileSummary[];
+  });
+  const activeProfile = profiles.find((profile) => profile.isActive);
+  const nextStatus = activeProfile ? formatHomeFooterStatus(activeProfile) : null;
+
+  if (nextStatus === homeFooterStatus) return;
+  homeFooterStatus = nextStatus;
+  api.renderer?.requestRender?.();
 }
 
 function showConnectProfilePrompt(api: TuiApi): void {
@@ -490,7 +533,7 @@ async function handlePossibleLimitEvent(api: TuiApi, event: unknown): Promise<vo
   });
 
   if (!limitedProfile) {
-    api.ui.toast({ variant: "warning", message: "Account issue detected, but no active profile is known.", duration: 10000 });
+    await appendDiagnosticLog("account limit no active profile found", [`reason: ${summarizeForLog(reason)}`]);
     return;
   }
 
@@ -843,6 +886,18 @@ function formatProfileDescription(profile: ProfileSummary): string {
   if (profile.expiresAt) parts.push(`expires: ${profile.expiresAt}`);
   if (profile.lastSelectedAt) parts.push(`last used: ${profile.lastSelectedAt}`);
   return parts.join(" · ");
+}
+
+function formatHomeFooterStatus(profile: ProfileSummary): string {
+  const parts = [`AS: ${profile.id}`];
+  if (profile.expiresAt) parts.push(`expires: ${formatFooterDate(profile.expiresAt)}`);
+  return parts.join(" · ");
+}
+
+function formatFooterDate(value: string): string {
+  const timestamp = Date.parse(value);
+  if (!Number.isFinite(timestamp)) return value;
+  return new Date(timestamp).toISOString();
 }
 
 function formatAvailableIn(availableAt: string | null): string {

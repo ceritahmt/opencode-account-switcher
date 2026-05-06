@@ -66,6 +66,19 @@ test("tui plugin registers settings and usage-limit auto-switch hooks", async ()
   assert.match(source, /runCli\(\["use", nextProfile\]\)/);
 });
 
+test("tui plugin renders active profile in home footer", async () => {
+  const pluginPath = path.join(process.cwd(), "src", "tui-plugin.ts");
+  const source = await fs.readFile(pluginPath, "utf8");
+
+  assert.match(source, /registerHomeFooter\(api\)/);
+  assert.match(source, /slots:\s*\{[\s\S]*home_footer\(\)/);
+  assert.match(source, /refreshHomeFooterStatus/);
+  assert.match(source, /formatHomeFooterStatus/);
+  assert.match(source, /AS: \$\{profile\.id\}/);
+  assert.match(source, /expires: \$\{formatFooterDate\(profile\.expiresAt\)\}/);
+  assert.match(source, /api\.renderer\?\.requestRender\?\.\(\)/);
+});
+
 test("server plugin handles usage-limit events", async () => {
   const pluginPath = path.join(process.cwd(), "src", "server-plugin.ts");
   const source = await fs.readFile(pluginPath, "utf8");
