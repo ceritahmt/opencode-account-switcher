@@ -8,11 +8,67 @@ Repository: https://github.com/ceritahmt/opencode-account-switcher
 
 OpenCode OpenAI account switcher for ChatGPT-style multi-account workflows.
 
-`opencode-as` helps manage multiple OpenAI / ChatGPT accounts in OpenCode by saving provider-specific auth objects as local profiles, switching between accounts from the native TUI, and handling usage-limit or auth-token errors with optional auto-switch.
+`opencode-as` helps manage multiple OpenAI / ChatGPT accounts in OpenCode by saving provider-specific auth objects as local profiles, switching between accounts from the native TUI, and handling usage-limit events with optional auto-switch.
 
 ## Installation
 
-Add `@ceritahmt/opencode-as@latest` to both OpenCode plugin config files.
+Recommended install:
+
+```bash
+opencode plugin @ceritahmt/opencode-as@latest --global
+```
+
+If OpenCode has a stale cached `@latest` package, clear the package cache and reinstall with `--force`:
+
+```bash
+rm -rf ~/.cache/opencode/packages/@ceritahmt/opencode-as@latest
+opencode plugin @ceritahmt/opencode-as@latest --global --force
+```
+
+This uses OpenCode's plugin installer. Because the package exposes both `./server` and `./tui` entrypoints, the installer can add the server plugin and the TUI slash-command plugin to the correct OpenCode config files.
+
+Use the same command without `--global` if you only want to install it for the current project.
+
+If OpenCode says only `Detected server target`, it is using an older cached `@latest` package. Either clear the cache with the command above or install an exact version, then restart OpenCode:
+
+```bash
+opencode plugin @ceritahmt/opencode-as@<version> --global --force
+```
+
+## Uninstall
+
+OpenCode currently installs plugins by writing them into config files. To uninstall globally, remove `@ceritahmt/opencode-as` from both global plugin config files and clear the cached package:
+
+```bash
+node - <<'NODE'
+const fs = require("node:fs");
+const os = require("node:os");
+const path = require("node:path");
+
+const packageName = "@ceritahmt/opencode-as";
+const files = [
+  path.join(os.homedir(), ".config/opencode/opencode.json"),
+  path.join(os.homedir(), ".config/opencode/tui.json"),
+];
+
+for (const file of files) {
+  if (!fs.existsSync(file)) continue;
+  const config = JSON.parse(fs.readFileSync(file, "utf8"));
+  config.plugin = (config.plugin ?? []).filter((plugin) => !String(plugin).startsWith(packageName));
+  fs.writeFileSync(file, `${JSON.stringify(config, null, 2)}\n`);
+}
+NODE
+
+rm -rf ~/.cache/opencode/packages/@ceritahmt/opencode-as@latest
+```
+
+This does not delete saved account profiles. If you also want to remove local profile data, delete it manually after making sure you do not need the saved auth snapshots:
+
+```bash
+rm -rf ~/.local/share/opencode/opencode-as-account
+```
+
+Manual setup is also possible: add `@ceritahmt/opencode-as@latest` to both OpenCode plugin config files.
 
 `.opencode/opencode.json` loads the server plugin:
 
@@ -32,28 +88,28 @@ Add `@ceritahmt/opencode-as@latest` to both OpenCode plugin config files.
 }
 ```
 
-If you already have plugins, keep them and add `@ceritahmt/opencode-as@latest` to the same `plugin` array. Restart OpenCode after changing config.
+If you already have plugins, keep them and add `@ceritahmt/opencode-as@latest` to the same `plugin` array. Restart OpenCode after installing or changing config.
 
 ## MVP commands
 
 ```text
 /as-connect
 /as-accounts
-/ac-settings
+/as-settings
 ```
 
 `/as-connect` opens a native TUI prompt for the profile name, then opens OpenCode's native interactive provider login/connect dialog through the TUI plugin. After OpenAI auth changes, it auto-saves that provider object as the chosen profile.
 
 `/as-accounts` opens a native TUI account list. Select a profile first, then choose `Use`, `Reconnect`, or `Delete`. If the saved provider auth contains an expiry field, it is shown in the list.
 
-`/ac-settings` opens account settings. It can enable or disable auto-switch and clear locally remembered limited-account markers.
+`/as-settings` opens account settings. It can enable or disable auto-switch, clear locally remembered limited-account markers, and show the installed package version.
 
 After OpenCode login/connect completes, switch profiles with `/as-accounts`:
 
 ```text
 /as-connect
 /as-accounts
-/ac-settings
+/as-settings
 ```
 
 Interactive login is intentionally not run from the OpenCode markdown command because it is not a reliable TTY prompt environment.
@@ -68,16 +124,24 @@ The native interactive path is `/as-connect`, which triggers OpenCode's `provide
 3. In the OpenCode TUI, run `/as-connect` and enter a profile name.
 4. Complete OpenCode's native OpenAI connect/login flow.
 5. Open `/as-accounts` to view saved profiles, switch accounts, reconnect expired auth, or delete a profile.
-6. Open `/ac-settings` to enable/disable auto-switch, clear limited markers, and see the installed package version.
+6. Open `/as-settings` to enable/disable auto-switch, clear limited markers, and see the installed package version.
 
-When OpenCode reports usage/rate-limit or auth-token errors, the plugin marks the current profile as limited. If auto-switch is disabled it asks before switching; if auto-switch is enabled it switches to the next available profile automatically.
+When OpenCode reports a usage-limit message, the plugin marks the current profile as limited for 5 hours. If auto-switch is disabled it asks before switching; if auto-switch is enabled it switches to the next available profile automatically.
 
 ## OpenCode command integration
 
-`/as-connect`, `/as-accounts`, and `/ac-settings` are native TUI paths and are implemented by the package TUI plugin (`./tui`).
+`/as-connect`, `/as-accounts`, and `/as-settings` are native TUI paths and are implemented by the package TUI plugin (`./tui`).
 Usage/auth error capture is exported as the package server plugin (`./server`), so server-side retry/status events can mark the active profile as limited even when the TUI event bus does not receive the retry banner.
 
 Published setup needs both OpenCode config files:
+
+The easiest way is OpenCode's plugin installer:
+
+```bash
+opencode plugin @ceritahmt/opencode-as@latest --global
+```
+
+This is different from manually adding the package only to `opencode.json`: `opencode.json` loads server hooks, while `tui.json` loads `/as-connect`, `/as-accounts`, and `/as-settings`.
 
 `.opencode/opencode.json`:
 
@@ -97,7 +161,7 @@ Published setup needs both OpenCode config files:
 }
 ```
 
-`opencode.json` loads the server plugin. `tui.json` loads the native slash commands. If only `opencode.json` is configured, usage-limit detection may work but `/as-connect`, `/as-accounts`, and `/ac-settings` will not appear.
+`opencode.json` loads the server plugin. `tui.json` loads the native slash commands. If only `opencode.json` is configured, usage-limit detection may work but `/as-connect`, `/as-accounts`, and `/as-settings` will not appear.
 
 It can be used alongside other OpenCode plugins:
 
@@ -140,11 +204,12 @@ Public OpenCode plugin APIs currently expose hooks and tools, so the reliable MV
 
 ## Usage/auth error auto-switch
 
-The server/TUI plugins listen for OpenCode `session.next.retried`, `session.error`, `session.next.step.failed`, `session.status`, `message.updated`, and `tui.toast.show` events. If an event message looks like a usage/rate limit (`usage limit`, `rate limit`, `too many requests`, `429`, or quota text) or an auth-token problem (`Could not parse your authentication token`, `Please try signing in again`), the first retry is logged and `attempt #2` marks the active profile as limited in `config.json`.
+The server/TUI plugins listen for OpenCode `session.next.retried`, `session.error`, `session.next.step.failed`, `session.status`, `message.updated`, and `tui.toast.show` events. If an event message contains `usage limit` or `limit has been reached`, the first retry is logged and `attempt #2` marks the active profile as limited in `config.json` for 5 hours.
 
 - If auto-switch is disabled, the TUI asks for confirmation before switching to the next available profile.
-- If auto-switch is enabled via `/ac-settings`, it switches to the next available profile automatically.
-- Limited markers are local runtime state and can be cleared from `/ac-settings`.
+- If auto-switch is enabled via `/as-settings`, it switches to the next available profile automatically.
+- `/as-accounts` shows limited profiles with remaining time, for example `available in: 4h 59m`.
+- Limited markers are local runtime state and can be cleared from `/as-settings`.
 
 ## Storage
 
@@ -180,7 +245,7 @@ Example:
 ~/.local/share/opencode/opencode-as-account/logs/log20260506.log
 ```
 
-Logs are written as pino-like JSONL entries with `time`, `level`, `event`, and `details` fields. They store command status, `/as-connect`, `/as-accounts`, `/ac-settings`, usage-limit detection steps, and sanitized errors only; auth tokens are redacted and should never be printed.
+Logs are written as pino-like JSONL entries with `time`, `level`, `event`, and `details` fields. They store command status, `/as-connect`, `/as-accounts`, `/as-settings`, usage-limit detection steps, and sanitized errors only; auth tokens are redacted and should never be printed.
 
 Environment overrides for tests/dev:
 

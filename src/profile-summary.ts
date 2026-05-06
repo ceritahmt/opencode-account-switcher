@@ -13,6 +13,7 @@ export interface ProfileSummary {
   isLimited: boolean;
   limitedAt: string | null;
   limitedReason: string | null;
+  availableAt: string | null;
 }
 
 const EXPIRY_KEYS = new Set(["expiresat", "expires", "expiry", "expiration", "expirationtime", "expireson"]);
@@ -24,18 +25,29 @@ export async function listProfileSummaries(paths: RuntimePaths): Promise<Profile
   return Promise.all(
     profiles.map(async (profile) => {
       const runtimeStatus = config.profileStatus[profile.id];
+      const isLimited = isStatusCurrentlyLimited(runtimeStatus);
       return {
         id: profile.id,
         provider: profile.provider,
         isActive: profile.id === status.activeProfile,
         lastSelectedAt: profile.lastSelectedAt,
         expiresAt: await readProfileExpiry(paths, profile),
-        isLimited: Boolean(runtimeStatus?.limitedAt),
+        isLimited,
         limitedAt: runtimeStatus?.limitedAt ?? null,
-        limitedReason: runtimeStatus?.limitedReason ?? null,
+        limitedReason: isLimited ? (runtimeStatus?.limitedReason ?? null) : null,
+        availableAt: runtimeStatus?.availableAt ?? null,
       };
     }),
   );
+}
+
+function isStatusCurrentlyLimited(status: { limitedAt?: string; availableAt?: string } | undefined): boolean {
+  if (!status?.limitedAt) return false;
+  if (!status.availableAt) return true;
+
+  const availableAt = Date.parse(status.availableAt);
+  if (!Number.isFinite(availableAt)) return true;
+  return availableAt > Date.now();
 }
 
 export function extractProviderExpiry(authRaw: string, provider: ProviderId): string | null {

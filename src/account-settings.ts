@@ -6,6 +6,8 @@ import { listProfileSummaries, type ProfileSummary } from "./profile-summary.js"
 import { extractProviderAuth } from "./provider-auth.js";
 import type { AccountSettings, RuntimePaths } from "./types.js";
 
+export const DEFAULT_LIMIT_COOLDOWN_MS = 5 * 60 * 60 * 1000;
+
 export async function loadAccountSettings(paths: RuntimePaths): Promise<AccountSettings> {
   return (await loadConfig(paths)).settings;
 }
@@ -24,6 +26,7 @@ export async function markActiveProfileLimited(paths: RuntimePaths, reason: stri
     const config = await loadConfig(paths);
     const activeProfile = config.activeProfile ?? (await inferActiveProfileFromCurrentAuth(paths));
     if (!activeProfile) return null;
+    const limitedAt = new Date();
 
     await saveConfig(paths, {
       ...config,
@@ -32,8 +35,9 @@ export async function markActiveProfileLimited(paths: RuntimePaths, reason: stri
         ...config.profileStatus,
         [activeProfile]: {
           ...config.profileStatus[activeProfile],
-          limitedAt: new Date().toISOString(),
+          limitedAt: limitedAt.toISOString(),
           limitedReason: sanitizeReason(reason),
+          availableAt: new Date(limitedAt.getTime() + DEFAULT_LIMIT_COOLDOWN_MS).toISOString(),
         },
       },
     });
@@ -52,6 +56,7 @@ export async function clearLimitedProfiles(paths: RuntimePaths): Promise<void> {
           ...status,
           limitedAt: undefined,
           limitedReason: undefined,
+          availableAt: undefined,
         },
       ]),
     );

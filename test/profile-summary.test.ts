@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { findNextAvailableProfile, loadAccountSettings, markActiveProfileLimited, setAutoSwitch } from "../src/account-settings.js";
+import { loadConfig, saveConfig } from "../src/config.js";
 import { getRuntimePaths } from "../src/paths.js";
 import { ProfileStore } from "../src/profile-store.js";
 import { extractProviderExpiry, listProfileSummaries } from "../src/profile-summary.js";
@@ -46,6 +47,7 @@ test("lists profile summaries with active and expiry information", async () => {
       isLimited: false,
       limitedAt: null,
       limitedReason: null,
+      availableAt: null,
     },
   ]);
   assert.match(summaries[0]?.lastSelectedAt ?? "", /^\d{4}-\d{2}-\d{2}T/);
@@ -73,9 +75,47 @@ test("stores auto-switch setting and limited profile state", async () => {
   assert.equal(await markActiveProfileLimited(paths, "The usage limit has been reached"), "a");
 
   const summaries = await listProfileSummaries(paths);
-  assert.equal(summaries.find((profile) => profile.id === "a")?.isLimited, true);
-  assert.equal(summaries.find((profile) => profile.id === "a")?.limitedReason, "The usage limit has been reached");
+  const limited = summaries.find((profile) => profile.id === "a");
+  assert.equal(limited?.isLimited, true);
+  assert.equal(limited?.limitedReason, "The usage limit has been reached");
+  assert.match(limited?.availableAt ?? "", /^\d{4}-\d{2}-\d{2}T/);
+  assert.ok(Date.parse(limited?.availableAt ?? "") > Date.now());
   assert.equal((await findNextAvailableProfile(paths))?.id, "b");
+});
+
+test("treats expired limited markers as available", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "opencode-as-expired-limit-test-"));
+  const env = {
+    ...process.env,
+    OPENCODE_AS_HOME: path.join(root, "data"),
+    OPENCODE_AUTH_PATH: path.join(root, "auth.json"),
+    XDG_DATA_HOME: path.join(root, "xdg-data"),
+  } as NodeJS.ProcessEnv;
+  const paths = getRuntimePaths(env);
+  const store = new ProfileStore(paths);
+
+  await fs.writeFile(paths.authPath, JSON.stringify({ openai: { type: "api", key: "secret-a" } }));
+  await store.saveCurrentProfile("a", "openai");
+  await fs.writeFile(paths.authPath, JSON.stringify({ openai: { type: "api", key: "secret-b" } }));
+  await store.saveCurrentProfile("b", "openai");
+  await store.useProfile("a");
+
+  await markActiveProfileLimited(paths, "The usage limit has been reached");
+  const config = await loadConfig(paths);
+  await saveConfig(paths, {
+    ...config,
+    profileStatus: {
+      ...config.profileStatus,
+      a: {
+        ...(config.profileStatus["a"] ?? {}),
+        availableAt: new Date(Date.now() - 60_000).toISOString(),
+      },
+    },
+  });
+
+  const summaries = await listProfileSummaries(paths);
+  assert.equal(summaries.find((profile) => profile.id === "a")?.isLimited, false);
+  assert.equal(summaries.find((profile) => profile.id === "a")?.limitedReason, null);
 });
 
 test("infers active profile from current auth when config has no active profile", async () => {
@@ -99,5 +139,6 @@ test("infers active profile from current auth when config has no active profile"
   const summaries = await listProfileSummaries(paths);
   assert.equal(summaries.find((profile) => profile.id === "b")?.isActive, true);
   assert.equal(summaries.find((profile) => profile.id === "b")?.isLimited, true);
+  assert.match(summaries.find((profile) => profile.id === "b")?.availableAt ?? "", /^\d{4}-\d{2}-\d{2}T/);
   assert.equal((await findNextAvailableProfile(paths))?.id, "a");
 });

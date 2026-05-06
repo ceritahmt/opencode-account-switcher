@@ -7,7 +7,7 @@ type ServerPlugin = () => Promise<{
 }>;
 
 const ACCOUNT_SWITCH_TRIGGER_RE =
-  /usage limit|limit has been reached|rate limit|too many requests|insufficient_quota|quota|\b429\b|could not parse your authentication token|authentication token|signing in again|provider auth|auth(?:entication)? token/i;
+  /usage limit|limit has been reached/i;
 
 const ServerAccountLimitPlugin: ServerPlugin = async () => {
   await appendServerLog("server limit plugin registered");

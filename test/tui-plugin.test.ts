@@ -36,7 +36,7 @@ test("tui plugin registers settings and usage-limit auto-switch hooks", async ()
   const pluginPath = path.join(process.cwd(), "src", "tui-plugin.ts");
   const source = await fs.readFile(pluginPath, "utf8");
 
-  assert.match(source, /name:\s*"ac-settings"/);
+  assert.match(source, /name:\s*"as-settings"/);
   assert.match(source, /Account Settings/);
   assert.match(source, /value:\s*"auto-on"/);
   assert.match(source, /value:\s*"auto-off"/);
@@ -56,7 +56,9 @@ test("tui plugin registers settings and usage-limit auto-switch hooks", async ()
   assert.match(source, /extractRetryAttempt/);
   assert.match(source, /extractPropertyNumber/);
   assert.match(source, /isInternalLimitToast/);
-  assert.match(source, /could not parse your authentication token/);
+  assert.match(source, /usage limit\|limit has been reached/);
+  assert.match(source, /available in:/);
+  assert.match(source, /formatAvailableIn/);
   assert.match(source, /account limit retry pending/);
   assert.match(source, /retryAttempt < 2/);
   assert.match(source, /markActiveProfileLimited/);
@@ -74,7 +76,7 @@ test("server plugin handles usage-limit events", async () => {
   assert.match(source, /message\.updated/);
   assert.match(source, /server account limit retry pending/);
   assert.match(source, /server account limit detected/);
-  assert.match(source, /could not parse your authentication token/);
+  assert.match(source, /usage limit\|limit has been reached/);
   assert.match(source, /markActiveProfileLimited/);
 });
 

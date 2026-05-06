@@ -25,6 +25,7 @@ export interface AccountSettings {
 export interface ProfileRuntimeStatus {
   limitedAt?: string;
   limitedReason?: string;
+  availableAt?: string;
 }
 
 export interface ProfileMetadata {

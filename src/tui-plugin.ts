@@ -81,6 +81,7 @@ type ProfileSummary = {
   isLimited: boolean;
   limitedAt: string | null;
   limitedReason: string | null;
+  availableAt: string | null;
 };
 type ProjectModule = {
   clearLimitedProfiles: (paths: unknown) => Promise<void>;
@@ -99,7 +100,7 @@ let lastLimitHandledAt = 0;
 let lastPersistedLimitHandledKey: string | null = null;
 
 const ACCOUNT_SWITCH_TRIGGER_RE =
-  /usage limit|limit has been reached|rate limit|too many requests|insufficient_quota|quota|\b429\b|could not parse your authentication token|authentication token|signing in again|provider auth|auth(?:entication)? token/i;
+  /usage limit|limit has been reached/i;
 
 const plugin = {
   id: "opencode-as.tui",
@@ -133,12 +134,12 @@ const plugin = {
         },
       },
       {
-        title: "AC: Settings",
+        title: "AS: Settings",
         value: "opencode-as.settings",
         description: "Configure account auto-switch behavior",
         category: "Account",
         slash: {
-          name: "ac-settings",
+          name: "as-settings",
         },
         onSelect: () => {
           void showAccountSettingsDialog(api);
@@ -226,7 +227,7 @@ function showConnectProfilePrompt(api: TuiApi): void {
 }
 
 async function showAccountSettingsDialog(api: TuiApi): Promise<void> {
-  await appendDiagnosticLog("/ac-settings started");
+  await appendDiagnosticLog("/as-settings started");
 
   let settings: AccountSettings;
   const packageVersion = await loadPackageVersion();
@@ -234,7 +235,7 @@ async function showAccountSettingsDialog(api: TuiApi): Promise<void> {
     settings = await loadAccountSettings();
   } catch (error) {
     const message = toErrorMessage(error);
-    await appendDiagnosticLog("/ac-settings failed to load settings", [`error: ${message}`]);
+    await appendDiagnosticLog("/as-settings failed to load settings", [`error: ${message}`]);
     api.ui.toast({ variant: "error", message });
     return;
   }
@@ -248,7 +249,7 @@ async function showAccountSettingsDialog(api: TuiApi): Promise<void> {
         {
           title: "Auto-switch: Enabled",
           value: "auto-on",
-          description: "Automatically switch to the next available account when account/auth issues are detected",
+          description: "Automatically switch to the next available account when usage limits are detected",
           category: "Settings",
           disabled: settings.autoSwitch,
         },
@@ -287,18 +288,18 @@ async function applySettingsAction(api: TuiApi, action: SettingsAction): Promise
 
     if (action === "clear-limits") {
       await clearLimitedProfiles();
-      await appendDiagnosticLog("/ac-settings limited markers cleared");
+      await appendDiagnosticLog("/as-settings limited markers cleared");
       api.ui.toast({ variant: "success", message: "Limited account markers cleared.", duration: 8000 });
       return;
     }
 
     const autoSwitch = action === "auto-on";
     await setAutoSwitch(autoSwitch);
-    await appendDiagnosticLog("/ac-settings auto-switch updated", [`autoSwitch: ${autoSwitch}`]);
+    await appendDiagnosticLog("/as-settings auto-switch updated", [`autoSwitch: ${autoSwitch}`]);
     api.ui.toast({ variant: "success", message: `Auto-switch ${autoSwitch ? "enabled" : "disabled"}.`, duration: 8000 });
   } catch (error) {
     const message = toErrorMessage(error);
-    await appendDiagnosticLog("/ac-settings update failed", [`error: ${message}`]);
+    await appendDiagnosticLog("/as-settings update failed", [`error: ${message}`]);
     api.ui.toast({ variant: "error", message, duration: 10000 });
   }
 }
@@ -554,7 +555,7 @@ function showLimitSwitchConfirm(api: TuiApi, limitedProfile: string, nextProfile
   api.ui.dialog.replace(() =>
     api.ui.DialogConfirm({
       title: "Usage limit detected",
-      message: `${limitedProfile} has an account/auth issue. Switch to ${nextProfile}?`,
+      message: `${limitedProfile} reached a usage limit. Switch to ${nextProfile}?`,
       onConfirm: () => {
         api.ui.dialog.clear();
         void switchProfileAfterLimit(api, limitedProfile, nextProfile, false);
@@ -835,10 +836,31 @@ function summarizeForLog(input: string): string {
 
 function formatProfileDescription(profile: ProfileSummary): string {
   const parts = [profile.provider];
-  if (profile.isLimited) parts.push(`limited${profile.limitedReason ? `: ${profile.limitedReason}` : ""}`);
+  if (profile.isLimited) {
+    parts.push(`limited${profile.limitedReason ? `: ${profile.limitedReason}` : ""}`);
+    parts.push(`available in: ${formatAvailableIn(profile.availableAt)}`);
+  }
   if (profile.expiresAt) parts.push(`expires: ${profile.expiresAt}`);
   if (profile.lastSelectedAt) parts.push(`last used: ${profile.lastSelectedAt}`);
   return parts.join(" · ");
+}
+
+function formatAvailableIn(availableAt: string | null): string {
+  if (!availableAt) return "unknown";
+
+  const timestamp = Date.parse(availableAt);
+  if (!Number.isFinite(timestamp)) return "unknown";
+
+  const remainingMs = timestamp - Date.now();
+  if (remainingMs <= 0) return "now";
+
+  const totalMinutes = Math.ceil(remainingMs / 60_000);
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+
+  if (hours <= 0) return `${minutes}m`;
+  if (minutes === 0) return `${hours}h`;
+  return `${hours}h ${minutes}m`;
 }
 
 function extractLimitReason(event: unknown): string | null {

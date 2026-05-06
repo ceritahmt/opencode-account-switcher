@@ -19,8 +19,18 @@ Temel amaç:
 - OpenCode’un aktif provider auth dosyasından sadece seçili provider objesini almak.
 - Bu objeyi named profile olarak saklamak.
 - İstenilen profile’ı tekrar OpenCode auth dosyasına merge ederek aktif etmek.
-- TUI tarafında `/as-connect`, `/as-accounts` ve `/ac-settings` native slash command’leri ile kullanıcı akışı sağlamak.
-- OpenCode usage/rate-limit event’lerinde aktif account’u limited olarak işaretlemek ve gerekirse sonraki profile’a geçmek.
+- TUI tarafında `/as-connect`, `/as-accounts` ve `/as-settings` native slash command’leri ile kullanıcı akışı sağlamak.
+- OpenCode usage-limit event’lerinde aktif account’u limited olarak işaretlemek ve gerekirse sonraki profile’a geçmek.
+
+Published package kurulumu için önerilen yol:
+
+```bash
+opencode plugin @ceritahmt/opencode-as@latest --global
+```
+
+Bu installer package `exports["./server"]` ve `exports["./tui"]` target’larını okuyup server plugin’i `opencode.json`, TUI slash command plugin’ini `tui.json` tarafına ekleyebilir. Sadece `opencode.json` içine manuel package eklenirse server hook’lar çalışabilir ama `/as-connect`, `/as-accounts`, `/as-settings` görünmeyebilir.
+
+OpenCode `@latest` spec’ini cache’leyebilir. Installer output’unda sadece `Detected server target` görünürse cache eski package’ı okuyordur; exact version ile `opencode plugin @ceritahmt/opencode-as@<version> --global --force` öner veya `~/.cache/opencode/packages/@ceritahmt/opencode-as@latest` cache’ini temizlet.
 
 ## Önemli Command’ler
 
@@ -29,7 +39,7 @@ npm run build
 npm test
 ```
 
-Kullanıcı akışı OpenCode TUI içinde `/as-connect`, `/as-accounts` ve `/ac-settings` üzerinden anlatılmalı; README veya user-facing dokümanda `npm run as -- use/add --provider openai` örnekleri önerilmemeli.
+Kullanıcı akışı OpenCode TUI içinde `/as-connect`, `/as-accounts` ve `/as-settings` üzerinden anlatılmalı; README veya user-facing dokümanda `npm run as -- use/add --provider openai` örnekleri önerilmemeli.
 
 Her code değişikliğinden sonra en azından şunu çalıştır:
 
@@ -57,7 +67,7 @@ Alt klasörler:
 └── lock
 ```
 
-`config.json` içinde `activeProfile`, `settings.autoSwitch` ve local `profileStatus` bilgileri tutulur. `profileStatus` limited account marker’ları içindir; auth secret içermez.
+`config.json` içinde `activeProfile`, `settings.autoSwitch` ve local `profileStatus` bilgileri tutulur. `profileStatus` limited account marker’ları içindir; `limitedAt`, `limitedReason`, `availableAt` tutar ve auth secret içermez.
 
 OpenCode’un aktif auth dosyası burada kalır:
 
@@ -149,7 +159,7 @@ XDG_DATA_HOME=/tmp/xdg-data
 ### Account Settings
 
 - `src/account-settings.ts`
-  - `/ac-settings` için account settings ve limited profile runtime state helper’larını içerir.
+  - `/as-settings` için account settings ve limited profile runtime state helper’larını içerir.
   - `loadAccountSettings()`, `setAutoSwitch()`, `markActiveProfileLimited()`, `clearLimitedProfiles()`, `findNextAvailableProfile()` export eder.
   - Config mutation işlemlerini lock içinde yapar.
 
@@ -163,8 +173,8 @@ XDG_DATA_HOME=/tmp/xdg-data
   - Local dev config `.opencode/tui.json` `plugin: ["./plugins/as-tui.ts"]` kullanır; `npm run build` sonrası OpenCode restart gerekir.
   - `/as-connect`: OpenAI provider connect flow + auto-save.
   - `/as-accounts`: Profile listesi + action seçimi.
-  - `/ac-settings`: Auto-switch ayarı ve limited marker temizleme.
-  - TUI event bus üzerinden usage/rate-limit sinyali yakalamayı dener.
+  - `/as-settings`: Auto-switch ayarı, limited marker temizleme ve version bilgisi.
+  - TUI event bus üzerinden usage-limit sinyali yakalamayı dener.
   - Server plugin tarafından yazılan persisted limited state’i polling ile görüp confirmation/auto-switch akışını başlatır.
   - TUI içinde CLI spawn etmek için `process.execPath` kullanma; OpenCode runtime’da bu `opencode` executable olabilir.
   - Bunun yerine package içinde relative built module dynamic import kullan:
@@ -182,7 +192,7 @@ import("./index.js")
   - Local dev shim: `.opencode/plugins/as-server.ts` built `dist/src/server-plugin.js` default export’unu re-export eder.
   - Local dev config `.opencode/opencode.json` `plugin: ["./plugins/as-server.ts"]` kullanır; `npm run build` sonrası OpenCode restart gerekir.
   - `event` hook ile `session.next.retried`, `session.error`, `session.next.step.failed`, `session.status`, `message.updated` event’lerini dinler.
-  - Usage/rate-limit text yakalanırsa `attempt #1` için sadece log yazar; `attempt #2` ve sonrası aktif profile’ı limited işaretler.
+  - `usage limit` veya `limit has been reached` text yakalanırsa `attempt #1` için sadece log yazar; `attempt #2` ve sonrası aktif profile’ı 5 saat limited işaretler.
   - TUI plugin bu persisted limited marker’ı okuyup confirmation veya auto-switch akışını çalıştırır.
 
 ## TUI Command Davranışları
@@ -211,7 +221,7 @@ Beklenen akış:
 5. `Delete` confirmation ister ve `rm` command’i ile `trash/` altına taşır.
 6. `Reconnect` expire yenilemek için provider reconnect flow çalıştırır ve mevcut profile snapshot’ını update eder.
 
-### `/ac-settings`
+### `/as-settings`
 
 Beklenen akış:
 
@@ -219,15 +229,16 @@ Beklenen akış:
 2. `Auto-switch: Enabled` seçilirse `settings.autoSwitch = true` yazılır.
 3. `Auto-switch: Disabled` seçilirse `settings.autoSwitch = false` yazılır.
 4. `Clear limited markers` seçilirse `profileStatus` altındaki limited marker’lar temizlenir.
+5. Dialog içinde installed package version read-only olarak gösterilir.
 
-### Usage/Auth Error Auto-switch
+### Usage Limit Auto-switch
 
 Beklenen akış:
 
 1. Server/TUI plugin `session.next.retried`, `session.error`, `session.next.step.failed`, `session.status`, `message.updated` ve `tui.toast.show` event’lerini dinler.
-2. Event text içinde `usage limit`, `rate limit`, `too many requests`, `429`, `quota`, `Could not parse your authentication token`, `Please try signing in again` gibi limit veya auth-token hata ifadeleri aranır.
+2. Event text içinde sadece `usage limit` veya `limit has been reached` ifadeleri aranır.
 3. `session.next.retried` için `attempt #1` sadece loglanır; `attempt #2` ve sonrası switch akışını başlatır.
-4. Eşik geçilince aktif profile `limitedAt` ve `limitedReason` ile işaretlenir.
+4. Eşik geçilince aktif profile `limitedAt`, `limitedReason` ve 5 saat sonrası için `availableAt` ile işaretlenir.
 5. Sonraki limited olmayan profile bulunur.
 6. `settings.autoSwitch = false` ise switch için confirmation istenir.
 7. `settings.autoSwitch = true` ise `runCli(["use", nextProfile])` ile otomatik geçilir.
