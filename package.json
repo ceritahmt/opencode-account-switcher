@@ -1,5 +1,5 @@
 {
-  "name": "opencode-as",
+  "name": "@ceritahmt/opencode-as",
   "version": "1.0.0",
   "description": "OpenCode OpenAI / ChatGPT account switcher for multi-account workflows",
   "type": "module",

@@ -1,6 +1,8 @@
 # OpenCode OpenAI / ChatGPT Account Switcher
 
-Package / CLI name: `opencode-as`.
+Package name: `@ceritahmt/opencode-as`.
+
+CLI name: `opencode-as`.
 
 OpenCode OpenAI account switcher for ChatGPT-style multi-account workflows.
 
@@ -34,7 +36,27 @@ The native interactive path is `/as-connect`, which triggers OpenCode's `provide
 ## OpenCode command integration
 
 `/as-connect`, `/as-accounts`, and `/ac-settings` are native TUI paths and are implemented via `.opencode/plugins/as-tui.ts`.
-Usage/auth error capture also uses `.opencode/plugins/as-server.ts`, loaded from `.opencode/opencode.json`, so server-side retry/status events can mark the active profile as limited even when the TUI event bus does not receive the retry banner.
+Usage/auth error capture is exported from the package root as an OpenCode server plugin, so server-side retry/status events can mark the active profile as limited even when the TUI event bus does not receive the retry banner.
+
+Published OpenCode server plugin config:
+
+```json
+{
+  "plugin": ["@ceritahmt/opencode-as@latest"]
+}
+```
+
+It can be used alongside other OpenCode plugins:
+
+```json
+{
+  "plugin": [
+    "@ceritahmt/opencode-as@latest",
+    "oh-my-opencode-slim",
+    "@tarquinen/opencode-dcp@latest"
+  ]
+}
+```
 
 Public OpenCode plugin APIs currently expose hooks and tools, so the reliable MVP integration is CLI + the native TUI commands listed above.
 

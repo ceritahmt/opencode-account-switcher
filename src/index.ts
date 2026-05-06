@@ -8,3 +8,4 @@ export { validateProfileName } from "./validation.js";
 export type { LogEntry, LogLevel } from "./log.js";
 export type { ProfileSummary } from "./profile-summary.js";
 export type { AccountSettings, ActiveProfileStatus, AppConfig, ProfileMetadata, ProfileRuntimeStatus, RuntimePaths } from "./types.js";
+export { default } from "./server-plugin.js";

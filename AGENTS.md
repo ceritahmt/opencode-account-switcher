@@ -12,7 +12,7 @@ Bu dosya, bu repository üzerinde çalışan AI coding agent’ları için proje
 
 ## Project Özeti
 
-`opencode-as`, OpenCode için OpenAI account/profile switcher’dır.
+`@ceritahmt/opencode-as`, OpenCode için OpenAI account/profile switcher’dır. CLI bin adı `opencode-as` olarak kalır.
 
 Temel amaç:
 
@@ -171,8 +171,10 @@ import(pathToFileURL(path.join(process.cwd(), "dist", "src", "index.js")).href)
 
 ### Server Plugin
 
-- `as-server.ts`
-  - `.opencode/opencode.json` içinden yüklenen OpenCode server plugin.
+- `src/server-plugin.ts`
+  - Package root default export olarak yayınlanan OpenCode server plugin.
+  - Published config içinde `.opencode/opencode.json` `plugin: ["@ceritahmt/opencode-as@latest"]` şeklinde yüklenir.
+  - Local dev shim: `.opencode/plugins/as-server.ts` built `dist/src/server-plugin.js` default export’unu re-export eder.
   - `event` hook ile `session.next.retried`, `session.error`, `session.next.step.failed`, `session.status`, `message.updated` event’lerini dinler.
   - Usage/rate-limit text yakalanırsa `attempt #1` için sadece log yazar; `attempt #2` ve sonrası aktif profile’ı limited işaretler.
   - TUI plugin bu persisted limited marker’ı okuyup confirmation veya auto-switch akışını çalıştırır.

@@ -62,7 +62,7 @@ test("tui plugin registers settings and usage-limit auto-switch hooks", async ()
 });
 
 test("server plugin handles usage-limit events", async () => {
-  const pluginPath = path.join(process.cwd(), ".opencode", "plugins", "as-server.ts");
+  const pluginPath = path.join(process.cwd(), "src", "server-plugin.ts");
   const source = await fs.readFile(pluginPath, "utf8");
 
   assert.match(source, /event:\s*async \(\{ event \}\)/);
@@ -94,5 +94,5 @@ test("opencode config loads server plugin", async () => {
   const configPath = path.join(process.cwd(), ".opencode", "opencode.json");
   const config = JSON.parse(await fs.readFile(configPath, "utf8")) as { plugin: string[] };
 
-  assert.deepEqual(config.plugin, ["./plugins/as-server.ts"]);
+  assert.deepEqual(config.plugin, ["@ceritahmt/opencode-as@latest"]);
 });
