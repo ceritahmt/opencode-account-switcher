@@ -7,7 +7,7 @@ test("parses empty opencode command arguments", () => {
   assert.deepEqual(parseArgumentLine("   \n"), []);
 });
 
-test("parses common /as argument forms", () => {
+test("parses common CLI argument forms", () => {
   assert.deepEqual(parseArgumentLine("ls"), ["ls"]);
   assert.deepEqual(parseArgumentLine("add work --provider openai --current"), ["add", "work", "--provider", "openai", "--current"]);
   assert.deepEqual(parseArgumentLine("use 'work.profile'"), ["use", "work.profile"]);

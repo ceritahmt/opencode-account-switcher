@@ -118,7 +118,7 @@ export class ProfileStore {
       const profileAuth = extractProviderAuth(profileAuthRaw, metadata.provider);
 
       if (profileAuth.hash !== metadata.authHash) {
-        throw new UserFacingError(`Profile auth changed outside /as: ${id}`);
+        throw new UserFacingError(`Profile auth changed outside opencode-as: ${id}`);
       }
 
       const activeBefore = await this.readOptionalActiveAuth();
@@ -197,14 +197,14 @@ export class ProfileStore {
     try {
       activeProviderHash = extractProviderAuth(active.raw, metadata.provider).hash;
     } catch {
-      return { activeProfile, metadata, authPath: this.paths.authPath, status: "changed outside /as" };
+      return { activeProfile, metadata, authPath: this.paths.authPath, status: "changed outside opencode-as" };
     }
 
     return {
       activeProfile,
       metadata,
       authPath: this.paths.authPath,
-      status: activeProviderHash === metadata.authHash ? "synced" : "changed outside /as",
+      status: activeProviderHash === metadata.authHash ? "synced" : "changed outside opencode-as",
     };
   }
 

@@ -39,7 +39,7 @@ export interface RuntimePaths {
   logPath: string;
 }
 
-export type DriftStatus = "synced" | "changed outside /as" | "missing auth" | "no active profile" | "missing profile";
+export type DriftStatus = "synced" | "changed outside opencode-as" | "missing auth" | "no active profile" | "missing profile";
 
 export interface ActiveProfileStatus {
   activeProfile: string | null;

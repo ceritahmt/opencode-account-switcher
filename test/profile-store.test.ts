@@ -47,7 +47,7 @@ test("snapshots current auth and switches back to it", async () => {
   assert.doesNotMatch(metadata, /secret-a/);
 });
 
-test("reports drift when active auth changes outside /as", async () => {
+test("reports drift when active auth changes outside opencode-as", async () => {
   const fixture = await createFixture();
   await fs.writeFile(fixture.authPath, JSON.stringify({ openai: { type: "api", key: "secret-a" } }));
   assert.equal((await runCli(["add", "work", "--current"], fixture.env)).code, 0);
@@ -56,7 +56,29 @@ test("reports drift when active auth changes outside /as", async () => {
   await fs.writeFile(fixture.authPath, JSON.stringify({ openai: { type: "api", key: "changed" } }));
   const who = await runCli(["who"], fixture.env);
   assert.equal(who.code, 0, who.stderr);
-  assert.match(who.stdout, /Status: changed outside \/as/);
+  assert.match(who.stdout, /Status: changed outside opencode-as/);
+});
+
+test("updates an existing profile from current auth", async () => {
+  const fixture = await createFixture();
+  await fs.writeFile(fixture.authPath, JSON.stringify({ openai: { type: "api", key: "secret-a" } }));
+  assert.equal((await runCli(["add", "work", "--current"], fixture.env)).code, 0);
+
+  await fs.writeFile(fixture.authPath, JSON.stringify({ openai: { type: "api", key: "secret-b" } }));
+  const update = await runCli(["update", "work", "--provider", "openai", "--current"], fixture.env);
+  assert.equal(update.code, 0, update.stderr);
+  assert.match(update.stdout, /Profile updated: work/);
+
+  const paths = getRuntimePaths(fixture.env);
+  const storedProfileAuth = JSON.parse(await fs.readFile(path.join(paths.profilesDir, "work", "auth.json"), "utf8")) as {
+    openai: { key: string };
+  };
+  assert.equal(storedProfileAuth.openai.key, "secret-b");
+
+  const metadata = JSON.parse(await fs.readFile(path.join(paths.profilesDir, "work", "metadata.json"), "utf8")) as {
+    authSource: string;
+  };
+  assert.equal(metadata.authSource, "connect-flow");
 });
 
 test("rejects malformed auth snapshots", async () => {
@@ -137,7 +159,7 @@ test("add without --current shows provider login/save next steps", async () => {
 
   assert.equal(add.code, 0, add.stderr);
   assert.match(add.stdout, /Select provider:/);
-  assert.match(add.stdout, /\/as add work --provider openai --current/);
+  assert.match(add.stdout, /npm run as -- add work --provider openai --current/);
 });
 
 test("rejects missing selected provider auth", async () => {

@@ -3,13 +3,13 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import test from "node:test";
 
-test("/as markdown command is removed", async () => {
+test("legacy markdown command is removed", async () => {
   const docPath = path.join(process.cwd(), ".opencode", "commands", "as.md");
 
   await assert.rejects(fs.access(docPath));
 });
 
-test("/as-connect native slash command remains registered", async () => {
+test("native connect slash command remains registered", async () => {
   const pluginPath = path.join(process.cwd(), ".opencode", "plugins", "as-tui.ts");
   const plugin = await fs.readFile(pluginPath, "utf8");
 

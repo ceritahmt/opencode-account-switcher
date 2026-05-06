@@ -11,10 +11,10 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.a
 
   try {
     const rawArguments = await readStdin();
-    await appendDebugLog(paths, "/as command invoked", [`arguments: ${summarizeArguments(rawArguments)}`]);
+    await appendDebugLog(paths, "legacy command invoked", [`arguments: ${summarizeArguments(rawArguments)}`]);
 
     const result = await runCli(parseArgumentLine(rawArguments));
-    await appendDebugLog(paths, result.code === 0 ? "/as command completed" : "/as command failed", [
+    await appendDebugLog(paths, result.code === 0 ? "legacy command completed" : "legacy command failed", [
       `exitCode: ${result.code}`,
       result.stderr ? `error: ${result.stderr}` : "error: none",
     ]);
@@ -23,7 +23,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.a
     if (result.stderr) process.stdout.write(`Error: ${result.stderr}\n`);
     if (result.code !== 0) process.stdout.write(`\n(opencode-as exited with code ${result.code})\n`);
   } catch (error) {
-    await appendDebugLog(paths, "/as command crashed", [`error: ${toSafeErrorMessage(error)}`]);
+    await appendDebugLog(paths, "legacy command crashed", [`error: ${toSafeErrorMessage(error)}`]);
     process.stdout.write(`Error: ${toSafeErrorMessage(error)}\n`);
     process.stdout.write("\n(opencode-as exited with code 1)\n");
   }
@@ -70,7 +70,7 @@ export function parseArgumentLine(input: string): string[] {
     current += char;
   }
 
-  if (quote) throw new UserFacingError("Unclosed quote in /as arguments.");
+  if (quote) throw new UserFacingError("Unclosed quote in command arguments.");
   if (current) args.push(current);
   return args;
 }

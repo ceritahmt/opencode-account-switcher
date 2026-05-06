@@ -24,9 +24,11 @@ test("tui plugin registers accounts command with action selection", async () => 
   assert.match(source, /DialogSelect/);
   assert.match(source, /Select action/);
   assert.match(source, /value:\s*"use"/);
+  assert.match(source, /value:\s*"reconnect"/);
   assert.match(source, /value:\s*"delete"/);
   assert.match(source, /DialogConfirm/);
   assert.match(source, /runCli\(\["use", profile\]\)/);
+  assert.match(source, /runCli\(\["update", profile, "--provider", PROVIDER, "--current"\]\)/);
   assert.match(source, /runCli\(\["rm", profile\]\)/);
 });
 

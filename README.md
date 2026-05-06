@@ -11,7 +11,7 @@ OpenCode auth profile switcher for provider-specific OpenAI auth objects.
 
 `/as-connect` opens a native TUI prompt for the profile name, then opens OpenCode's native interactive provider login/connect dialog through the TUI plugin. After OpenAI auth changes, it auto-saves that provider object as the chosen profile.
 
-`/as-accounts` opens a native TUI account list. Select a profile first, then choose an action such as `Use` or `Delete`. If the saved provider auth contains an expiry field, it is shown in the list.
+`/as-accounts` opens a native TUI account list. Select a profile first, then choose `Use`, `Reconnect`, or `Delete`. If the saved provider auth contains an expiry field, it is shown in the list.
 
 After OpenCode login/connect completes, switch profiles with `/as-accounts` or the CLI:
 
@@ -40,7 +40,7 @@ The native interactive path is `/as-connect`, which triggers OpenCode's `provide
 
 `/as-connect` and `/as-accounts` are native TUI paths and are implemented via `.opencode/plugins/as-tui.ts`.
 
-Public OpenCode plugin APIs currently expose hooks and tools, but not stable slash-command registration for `/as`. The reliable MVP integration is therefore CLI + native `/as-connect`.
+Public OpenCode plugin APIs currently expose hooks and tools, so the reliable MVP integration is CLI + the native TUI commands listed above.
 
 ## Storage
 
@@ -76,7 +76,7 @@ Example:
 ~/.local/share/opencode/opencode-as-account/logs/log20260506.log
 ```
 
-Logs are written as pino-like JSONL entries with `time`, `level`, `event`, and `details` fields. They store command status, `/as-connect` diagnostic steps, and sanitized errors only; auth tokens are redacted and should never be printed.
+Logs are written as pino-like JSONL entries with `time`, `level`, `event`, and `details` fields. They store command status, `/as-connect` and `/as-accounts` diagnostic steps, and sanitized errors only; auth tokens are redacted and should never be printed.
 
 Environment overrides for tests/dev:
 

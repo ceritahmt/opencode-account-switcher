@@ -27,7 +27,7 @@ async function acquireLock(lockPath: string): Promise<() => Promise<void>> {
   }
 
   if (await removeIfStale(lockPath)) return acquireLock(lockPath);
-  throw new UserFacingError("Another /as operation is already running. Remove a stale lock only if no operation is active.");
+  throw new UserFacingError("Another opencode-as operation is already running. Remove a stale lock only if no operation is active.");
 }
 
 async function removeIfStale(lockPath: string): Promise<boolean> {

@@ -62,7 +62,7 @@ async function runCliCommand(command: string | undefined, args: string[], store:
 
   if (command === "add") {
     const name = args[0] ? validateProfileName(args[0]) : undefined;
-    if (!name) throw new UserFacingError("Missing profile name. Usage: /as add <name>");
+    if (!name) throw new UserFacingError("Missing profile name. Usage: npm run as -- add <name>");
     const provider = getOption(args, "--provider") ?? "openai";
     parseProviderId(provider);
 
@@ -78,24 +78,24 @@ async function runCliCommand(command: string | undefined, args: string[], store:
 
   if (command === "use") {
     const name = args[0];
-    if (!name) throw new UserFacingError("Missing profile name. Usage: /as use <name>");
+    if (!name) throw new UserFacingError("Missing profile name. Usage: npm run as -- use <name>");
     return ok(formatUsingProfile(await store.useProfile(name)));
   }
 
   if (command === "update") {
     const name = args[0] ? validateProfileName(args[0]) : undefined;
-    if (!name) throw new UserFacingError("Missing profile name. Usage: /as update <name> --provider openai --current");
+    if (!name) throw new UserFacingError("Missing profile name. Usage: npm run as -- update <name> --provider openai --current");
     const provider = getOption(args, "--provider") ?? "openai";
     parseProviderId(provider);
     if (!args.includes("--current")) {
-      throw new UserFacingError("Missing --current. Usage: /as update <name> --provider openai --current");
+      throw new UserFacingError("Missing --current. Usage: npm run as -- update <name> --provider openai --current");
     }
     return ok(formatUpdatedProfile(await store.updateCurrentProfile(name, provider)));
   }
 
   if (command === "rm" || command === "remove") {
     const name = args[0];
-    if (!name) throw new UserFacingError("Missing profile name. Usage: /as rm <name>");
+    if (!name) throw new UserFacingError("Missing profile name. Usage: npm run as -- rm <name>");
     return ok(formatRemovedProfile(await store.removeProfile(name)));
   }
 
@@ -117,7 +117,7 @@ async function runOpenCodeLogin(provider: string, method?: string): Promise<void
       [
         "Interactive login cannot run from this OpenCode markdown command.",
         `Use /connect in OpenCode, or run in a terminal: opencode providers login --provider ${provider}`,
-        `Then save it with: /as add <name> --provider ${provider} --current`,
+        `Then save it with: npm run as -- add <name> --provider ${provider} --current`,
       ].join("\n"),
     );
   }

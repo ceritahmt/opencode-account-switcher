@@ -10,7 +10,7 @@ export function formatSavedProfile(metadata: ProfileMetadata): string {
     "Provider: OpenAI",
     "Saved auth scope: selected provider object only",
     `Profile saved: ${metadata.id}`,
-    `Use it with: /as use ${metadata.id}`,
+    `Use it with: npm run as -- use ${metadata.id}`,
   ].join("\n");
 }
 
@@ -37,7 +37,7 @@ export function formatAddProviderSelection(profileName: string, provider = "open
     `  opencode providers login --provider ${provider}`,
     "",
     "Login tamamlandıktan sonra sadece seçilen provider objesini kaydet:",
-    `  /as add ${profileName} --provider ${provider} --current`,
+    `  npm run as -- add ${profileName} --provider ${provider} --current`,
     "",
     "Terminalde tek komut denemek için:",
     `  npm run as -- add ${profileName} --provider ${provider} --login`,
@@ -84,30 +84,30 @@ export function formatMenu(status: ActiveProfileStatus, profiles: ProfileMetadat
     formatList(profiles, status.activeProfile),
     "",
     "Actions:",
-    "  /as add <name>",
-    "  /as add <name> --provider openai --current",
-    "  /as update <name> --provider openai --current",
-    "  /as use <name>",
-    "  /as rm <name>",
-    "  /as who",
-    "  /as ls",
-    "  /as providers",
+    "  npm run as -- add <name>",
+    "  npm run as -- add <name> --provider openai --current",
+    "  npm run as -- update <name> --provider openai --current",
+    "  npm run as -- use <name>",
+    "  npm run as -- rm <name>",
+    "  npm run as -- who",
+    "  npm run as -- ls",
+    "  npm run as -- providers",
   ].join("\n");
 }
 
 export function formatHelp(): string {
   return [
     "Usage:",
-    "  /as",
-    "  /as ls",
-    "  /as who",
-    "  /as add <name>",
-    "  /as add <name> --provider openai --current",
-    "  /as add <name> --provider openai --login",
-    "  /as update <name> --provider openai --current",
-    "  /as use <name>",
-    "  /as <name>",
-    "  /as rm <name>",
-    "  /as providers",
+    "  npm run as --",
+    "  npm run as -- ls",
+    "  npm run as -- who",
+    "  npm run as -- add <name>",
+    "  npm run as -- add <name> --provider openai --current",
+    "  npm run as -- add <name> --provider openai --login",
+    "  npm run as -- update <name> --provider openai --current",
+    "  npm run as -- use <name>",
+    "  npm run as -- <name>",
+    "  npm run as -- rm <name>",
+    "  npm run as -- providers",
   ].join("\n");
 }

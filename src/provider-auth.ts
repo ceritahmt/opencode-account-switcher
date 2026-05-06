@@ -55,7 +55,7 @@ function normalizeProviderId(input: string): string {
 
 function assertValidProviderCredential(value: unknown, provider: ProviderId): asserts value is Record<string, unknown> {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    throw new UserFacingError(`Provider auth not found: ${provider}. Login first, then run /as add <name> --provider ${provider} --current.`);
+    throw new UserFacingError(`Provider auth not found: ${provider}. Login first, then run npm run as -- add <name> --provider ${provider} --current.`);
   }
 
   const credential = value as Record<string, unknown>;
