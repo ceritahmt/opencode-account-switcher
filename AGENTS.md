@@ -27,14 +27,9 @@ Temel amaç:
 ```bash
 npm run build
 npm test
-npm run as -- --help
-npm run as -- list
-npm run as -- who
-npm run as -- add <profile> --provider openai --current
-npm run as -- update <profile> --provider openai --current
-npm run as -- use <profile>
-npm run as -- rm <profile>
 ```
+
+Kullanıcı akışı OpenCode TUI içinde `/as-connect`, `/as-accounts` ve `/ac-settings` üzerinden anlatılmalı; README veya user-facing dokümanda `npm run as -- use/add --provider openai` örnekleri önerilmemeli.
 
 Her code değişikliğinden sonra en azından şunu çalıştır:
 

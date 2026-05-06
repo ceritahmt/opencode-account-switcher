@@ -1,6 +1,10 @@
-# opencode-as
+# OpenCode OpenAI / ChatGPT Account Switcher
 
-OpenCode auth profile switcher for provider-specific OpenAI auth objects.
+Package / CLI name: `opencode-as`.
+
+OpenCode OpenAI account switcher for ChatGPT-style multi-account workflows.
+
+`opencode-as` helps manage multiple OpenAI / ChatGPT accounts in OpenCode by saving provider-specific auth objects as local profiles, switching between accounts from the native TUI, and handling usage-limit or auth-token errors with optional auto-switch.
 
 ## MVP commands
 
@@ -16,25 +20,12 @@ OpenCode auth profile switcher for provider-specific OpenAI auth objects.
 
 `/ac-settings` opens account settings. It can enable or disable auto-switch and clear locally remembered limited-account markers.
 
-After OpenCode login/connect completes, switch profiles with `/as-accounts` or the CLI:
+After OpenCode login/connect completes, switch profiles with `/as-accounts`:
 
 ```text
 /as-connect
 /as-accounts
 /ac-settings
-npm run as -- use work
-```
-
-If auto-save times out, save manually:
-
-```text
-npm run as -- add work --provider openai --current
-```
-
-When run directly in a real terminal, this can also delegate to OpenCode's public providers CLI:
-
-```bash
-npm run as -- add work --provider openai --login
 ```
 
 Interactive login is intentionally not run from the OpenCode markdown command because it is not a reliable TTY prompt environment.

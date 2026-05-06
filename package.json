@@ -1,7 +1,7 @@
 {
   "name": "opencode-as",
-  "version": "0.1.0",
-  "description": "OpenCode auth profile switcher for OpenAI accounts",
+  "version": "1.0.0",
+  "description": "OpenCode OpenAI / ChatGPT account switcher for multi-account workflows",
   "type": "module",
   "bin": {
     "opencode-as": "./dist/src/cli.js"
@@ -22,6 +22,9 @@
   "keywords": [
     "opencode",
     "openai",
+    "chatgpt",
+    "account-switcher",
+    "multi-account",
     "auth",
     "profiles"
   ],
