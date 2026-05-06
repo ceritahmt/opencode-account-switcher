@@ -1,5 +1,6 @@
 import fs from "node:fs/promises";
 import path from "node:path";
+import { loadConfig } from "./config.js";
 import { ProfileStore } from "./profile-store.js";
 import type { ProfileMetadata, ProviderId, RuntimePaths } from "./types.js";
 
@@ -9,22 +10,31 @@ export interface ProfileSummary {
   isActive: boolean;
   lastSelectedAt: string | null;
   expiresAt: string | null;
+  isLimited: boolean;
+  limitedAt: string | null;
+  limitedReason: string | null;
 }
 
 const EXPIRY_KEYS = new Set(["expiresat", "expires", "expiry", "expiration", "expirationtime", "expireson"]);
 
 export async function listProfileSummaries(paths: RuntimePaths): Promise<ProfileSummary[]> {
   const store = new ProfileStore(paths);
-  const [profiles, status] = await Promise.all([store.listProfiles(), store.getActiveStatus()]);
+  const [profiles, status, config] = await Promise.all([store.listProfiles(), store.getActiveStatus(), loadConfig(paths)]);
 
   return Promise.all(
-    profiles.map(async (profile) => ({
-      id: profile.id,
-      provider: profile.provider,
-      isActive: profile.id === status.activeProfile,
-      lastSelectedAt: profile.lastSelectedAt,
-      expiresAt: await readProfileExpiry(paths, profile),
-    })),
+    profiles.map(async (profile) => {
+      const runtimeStatus = config.profileStatus[profile.id];
+      return {
+        id: profile.id,
+        provider: profile.provider,
+        isActive: profile.id === status.activeProfile,
+        lastSelectedAt: profile.lastSelectedAt,
+        expiresAt: await readProfileExpiry(paths, profile),
+        isLimited: Boolean(runtimeStatus?.limitedAt),
+        limitedAt: runtimeStatus?.limitedAt ?? null,
+        limitedReason: runtimeStatus?.limitedReason ?? null,
+      };
+    }),
   );
 }
 

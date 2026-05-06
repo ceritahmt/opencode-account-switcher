@@ -6,6 +6,10 @@ export function defaultConfig(paths: RuntimePaths): AppConfig {
     version: 1,
     activeProfile: null,
     defaultProvider: "openai",
+    settings: {
+      autoSwitch: false,
+    },
+    profileStatus: {},
     targets: {
       opencode: {
         type: "file",
@@ -29,6 +33,11 @@ export async function loadConfig(paths: RuntimePaths): Promise<AppConfig> {
   return {
     ...defaultConfig(paths),
     ...config,
+    settings: {
+      ...defaultConfig(paths).settings,
+      ...(config.settings ?? {}),
+    },
+    profileStatus: config.profileStatus ?? {},
     targets: {
       opencode: {
         type: "file",

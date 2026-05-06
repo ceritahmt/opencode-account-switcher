@@ -11,9 +11,20 @@ export interface AppConfig {
   version: 1;
   activeProfile: string | null;
   defaultProvider: ProviderId;
+  settings: AccountSettings;
+  profileStatus: Record<string, ProfileRuntimeStatus>;
   targets: {
     opencode: TargetConfig;
   };
+}
+
+export interface AccountSettings {
+  autoSwitch: boolean;
+}
+
+export interface ProfileRuntimeStatus {
+  limitedAt?: string;
+  limitedReason?: string;
 }
 
 export interface ProfileMetadata {

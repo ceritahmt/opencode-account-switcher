@@ -7,17 +7,21 @@ OpenCode auth profile switcher for provider-specific OpenAI auth objects.
 ```text
 /as-connect
 /as-accounts
+/ac-settings
 ```
 
 `/as-connect` opens a native TUI prompt for the profile name, then opens OpenCode's native interactive provider login/connect dialog through the TUI plugin. After OpenAI auth changes, it auto-saves that provider object as the chosen profile.
 
 `/as-accounts` opens a native TUI account list. Select a profile first, then choose `Use`, `Reconnect`, or `Delete`. If the saved provider auth contains an expiry field, it is shown in the list.
 
+`/ac-settings` opens account settings. It can enable or disable auto-switch and clear locally remembered limited-account markers.
+
 After OpenCode login/connect completes, switch profiles with `/as-accounts` or the CLI:
 
 ```text
 /as-connect
 /as-accounts
+/ac-settings
 npm run as -- use work
 ```
 
@@ -38,9 +42,18 @@ The native interactive path is `/as-connect`, which triggers OpenCode's `provide
 
 ## OpenCode command integration
 
-`/as-connect` and `/as-accounts` are native TUI paths and are implemented via `.opencode/plugins/as-tui.ts`.
+`/as-connect`, `/as-accounts`, and `/ac-settings` are native TUI paths and are implemented via `.opencode/plugins/as-tui.ts`.
+Usage/auth error capture also uses `.opencode/plugins/as-server.ts`, loaded from `.opencode/opencode.json`, so server-side retry/status events can mark the active profile as limited even when the TUI event bus does not receive the retry banner.
 
 Public OpenCode plugin APIs currently expose hooks and tools, so the reliable MVP integration is CLI + the native TUI commands listed above.
+
+## Usage/auth error auto-switch
+
+The server/TUI plugins listen for OpenCode `session.next.retried`, `session.error`, `session.next.step.failed`, `session.status`, `message.updated`, and `tui.toast.show` events. If an event message looks like a usage/rate limit (`usage limit`, `rate limit`, `too many requests`, `429`, or quota text) or an auth-token problem (`Could not parse your authentication token`, `Please try signing in again`), the first retry is logged and `attempt #2` marks the active profile as limited in `config.json`.
+
+- If auto-switch is disabled, the TUI asks for confirmation before switching to the next available profile.
+- If auto-switch is enabled via `/ac-settings`, it switches to the next available profile automatically.
+- Limited markers are local runtime state and can be cleared from `/ac-settings`.
 
 ## Storage
 
@@ -76,7 +89,7 @@ Example:
 ~/.local/share/opencode/opencode-as-account/logs/log20260506.log
 ```
 
-Logs are written as pino-like JSONL entries with `time`, `level`, `event`, and `details` fields. They store command status, `/as-connect` and `/as-accounts` diagnostic steps, and sanitized errors only; auth tokens are redacted and should never be printed.
+Logs are written as pino-like JSONL entries with `time`, `level`, `event`, and `details` fields. They store command status, `/as-connect`, `/as-accounts`, `/ac-settings`, usage-limit detection steps, and sanitized errors only; auth tokens are redacted and should never be printed.
 
 Environment overrides for tests/dev:
 

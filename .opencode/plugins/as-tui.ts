@@ -48,6 +48,7 @@ type TuiApi = {
       options: DialogSelectOption<Value>[];
       onSelect?: (option: DialogSelectOption<Value>) => void;
       current?: Value;
+      skipFilter?: boolean;
     }) => unknown;
     toast: (input: ToastInput) => void;
     dialog: {
@@ -59,26 +60,54 @@ type TuiApi = {
     get: <Value = unknown>(key: string, fallback?: Value) => Value;
     set: (key: string, value: unknown) => void;
   };
+  event?: {
+    on: (type: string, handler: (event: unknown) => void) => () => void;
+  };
   lifecycle?: {
     signal?: AbortSignal;
+    onDispose?: (fn: () => void) => () => void;
   };
 };
 
 type CliResult = { code: number; stdout: string; stderr: string };
 type AccountAction = "use" | "reconnect" | "delete";
-type ProfileSummary = { id: string; provider: string; isActive: boolean; lastSelectedAt: string | null; expiresAt: string | null };
+type SettingsAction = "auto-on" | "auto-off" | "clear-limits";
+type AccountSettings = { autoSwitch: boolean };
+type ProfileSummary = {
+  id: string;
+  provider: string;
+  isActive: boolean;
+  lastSelectedAt: string | null;
+  expiresAt: string | null;
+  isLimited: boolean;
+  limitedAt: string | null;
+  limitedReason: string | null;
+};
 type ProjectModule = {
+  clearLimitedProfiles: (paths: unknown) => Promise<void>;
+  findNextAvailableProfile: (paths: unknown) => Promise<ProfileSummary | null>;
   getRuntimePaths: (env?: NodeJS.ProcessEnv) => unknown;
+  loadAccountSettings: (paths: unknown) => Promise<AccountSettings>;
   listProfileSummaries: (paths: unknown) => Promise<ProfileSummary[]>;
+  markActiveProfileLimited: (paths: unknown, reason: string) => Promise<string | null>;
   runCli: (argv: string[], env?: NodeJS.ProcessEnv) => Promise<CliResult>;
+  setAutoSwitch: (paths: unknown, autoSwitch: boolean) => Promise<AccountSettings>;
 };
 
 const PROVIDER = "openai";
 const PROFILE_NAME_PATTERN = /^[a-zA-Z0-9._-]{1,64}$/;
+let lastLimitHandledAt = 0;
+let lastPersistedLimitHandledKey: string | null = null;
+
+const ACCOUNT_SWITCH_TRIGGER_RE =
+  /usage limit|limit has been reached|rate limit|too many requests|insufficient_quota|quota|\b429\b|could not parse your authentication token|authentication token|signing in again|provider auth|auth(?:entication)? token/i;
 
 const plugin = {
   id: "opencode-as.tui",
   tui: async (api: TuiApi) => {
+    registerLimitDetection(api);
+    registerPersistedLimitPolling(api);
+
     api.command.register(() => [
       {
         title: "AS: Connect provider and save profile",
@@ -104,9 +133,72 @@ const plugin = {
           void showAccountsDialog(api);
         },
       },
+      {
+        title: "AC: Settings",
+        value: "opencode-as.settings",
+        description: "Configure account auto-switch behavior",
+        category: "Account",
+        slash: {
+          name: "ac-settings",
+        },
+        onSelect: () => {
+          void showAccountSettingsDialog(api);
+        },
+      },
     ]);
   },
 };
+
+function registerLimitDetection(api: TuiApi): void {
+  void appendDiagnosticLog("limit detection registration", [`eventApi: ${api.event ? "present" : "missing"}`]);
+
+  const disposers = [
+    api.event?.on("session.next.retried", (event) => {
+      void appendDiagnosticLog("limit event received", [`eventType: ${getEventType(event)}`, `summary: ${summarizeEventForLog(event)}`]);
+      void handlePossibleLimitEvent(api, event);
+    }),
+    api.event?.on("session.error", (event) => {
+      void appendDiagnosticLog("limit event received", [`eventType: ${getEventType(event)}`, `summary: ${summarizeEventForLog(event)}`]);
+      void handlePossibleLimitEvent(api, event);
+    }),
+    api.event?.on("session.next.step.failed", (event) => {
+      void appendDiagnosticLog("limit event received", [`eventType: ${getEventType(event)}`, `summary: ${summarizeEventForLog(event)}`]);
+      void handlePossibleLimitEvent(api, event);
+    }),
+    api.event?.on("session.status", (event) => {
+      void appendDiagnosticLog("limit event received", [`eventType: ${getEventType(event)}`, `summary: ${summarizeEventForLog(event)}`]);
+      void handlePossibleLimitEvent(api, event);
+    }),
+    api.event?.on("message.updated", (event) => {
+      void appendDiagnosticLog("limit event received", [`eventType: ${getEventType(event)}`, `summary: ${summarizeEventForLog(event)}`]);
+      void handlePossibleLimitEvent(api, event);
+    }),
+    api.event?.on("tui.toast.show", (event) => {
+      void appendDiagnosticLog("limit event received", [`eventType: ${getEventType(event)}`, `summary: ${summarizeEventForLog(event)}`]);
+      void handlePossibleLimitEvent(api, event);
+    }),
+  ].filter((dispose): dispose is () => void => typeof dispose === "function");
+
+  void appendDiagnosticLog("limit detection registered", [`handlers: ${disposers.length}`]);
+
+  if (disposers.length > 0) {
+    api.lifecycle?.onDispose?.(() => {
+      for (const dispose of disposers) dispose();
+    });
+  }
+}
+
+function registerPersistedLimitPolling(api: TuiApi): void {
+  void appendDiagnosticLog("persisted limit polling registered");
+
+  const interval = setInterval(() => {
+    void handlePersistedLimitState(api);
+  }, 2000);
+
+  api.lifecycle?.onDispose?.(() => {
+    clearInterval(interval);
+  });
+}
 
 function showConnectProfilePrompt(api: TuiApi): void {
   api.ui.dialog.replace(() =>
@@ -132,6 +224,74 @@ function showConnectProfilePrompt(api: TuiApi): void {
       },
     }),
   );
+}
+
+async function showAccountSettingsDialog(api: TuiApi): Promise<void> {
+  await appendDiagnosticLog("/ac-settings started");
+
+  let settings: AccountSettings;
+  try {
+    settings = await loadAccountSettings();
+  } catch (error) {
+    const message = toErrorMessage(error);
+    await appendDiagnosticLog("/ac-settings failed to load settings", [`error: ${message}`]);
+    api.ui.toast({ variant: "error", message });
+    return;
+  }
+
+  api.ui.dialog.replace(() =>
+    api.ui.DialogSelect<SettingsAction>({
+      title: "Account Settings",
+      placeholder: "Select setting",
+      current: settings.autoSwitch ? "auto-on" : "auto-off",
+      options: [
+        {
+          title: "Auto-switch: Enabled",
+          value: "auto-on",
+          description: "Automatically switch to the next available account when account/auth issues are detected",
+          category: "Settings",
+          disabled: settings.autoSwitch,
+        },
+        {
+          title: "Auto-switch: Disabled",
+          value: "auto-off",
+          description: "Ask for confirmation before switching accounts",
+          category: "Settings",
+          disabled: !settings.autoSwitch,
+        },
+        {
+          title: "Clear limited markers",
+          value: "clear-limits",
+          description: "Reset locally remembered account issue states",
+          category: "Settings",
+        },
+      ],
+      onSelect: (option) => {
+        api.ui.dialog.clear();
+        void applySettingsAction(api, option.value);
+      },
+    }),
+  );
+}
+
+async function applySettingsAction(api: TuiApi, action: SettingsAction): Promise<void> {
+  try {
+    if (action === "clear-limits") {
+      await clearLimitedProfiles();
+      await appendDiagnosticLog("/ac-settings limited markers cleared");
+      api.ui.toast({ variant: "success", message: "Limited account markers cleared.", duration: 8000 });
+      return;
+    }
+
+    const autoSwitch = action === "auto-on";
+    await setAutoSwitch(autoSwitch);
+    await appendDiagnosticLog("/ac-settings auto-switch updated", [`autoSwitch: ${autoSwitch}`]);
+    api.ui.toast({ variant: "success", message: `Auto-switch ${autoSwitch ? "enabled" : "disabled"}.`, duration: 8000 });
+  } catch (error) {
+    const message = toErrorMessage(error);
+    await appendDiagnosticLog("/ac-settings update failed", [`error: ${message}`]);
+    api.ui.toast({ variant: "error", message, duration: 10000 });
+  }
 }
 
 async function showAccountsDialog(api: TuiApi): Promise<void> {
@@ -266,6 +426,148 @@ async function deleteProfileFromDialog(api: TuiApi, profile: string): Promise<vo
   }
 
   api.ui.toast({ variant: "error", message: result.stderr || `Failed to delete profile: ${profile}`, duration: 10000 });
+}
+
+async function handlePossibleLimitEvent(api: TuiApi, event: unknown): Promise<void> {
+  if (isInternalLimitToast(event)) return;
+
+  const reason = extractLimitReason(event);
+  if (!reason) {
+    await appendDiagnosticLog("limit event ignored", [`eventType: ${getEventType(event)}`, `summary: ${summarizeEventForLog(event)}`]);
+    return;
+  }
+
+  const retryAttempt = extractRetryAttempt(event);
+  if (shouldWaitForRetryAttempt(event, retryAttempt)) {
+    await appendDiagnosticLog("account limit retry pending", [
+      `eventType: ${getEventType(event)}`,
+      `attempt: ${retryAttempt}`,
+      `reason: ${summarizeForLog(reason)}`,
+    ]);
+    return;
+  }
+
+  const now = Date.now();
+  if (now - lastLimitHandledAt < 10_000) {
+    await appendDiagnosticLog("account limit throttled", [`reason: ${summarizeForLog(reason)}`]);
+    return;
+  }
+  lastLimitHandledAt = now;
+
+  await appendDiagnosticLog("account limit detected", [
+    `reason: ${summarizeForLog(reason)}`,
+    retryAttempt === null ? "attempt: unknown" : `attempt: ${retryAttempt}`,
+  ]);
+
+  const limitedProfile = await markActiveProfileLimited(reason).catch(async (error) => {
+    await appendDiagnosticLog("account limit mark failed", [`error: ${toErrorMessage(error)}`]);
+    return null;
+  });
+
+  if (!limitedProfile) {
+    api.ui.toast({ variant: "warning", message: "Account issue detected, but no active profile is known.", duration: 10000 });
+    return;
+  }
+
+  const nextProfile = await findNextAvailableProfile().catch(async (error) => {
+    await appendDiagnosticLog("account limit next profile lookup failed", [`error: ${toErrorMessage(error)}`]);
+    return null;
+  });
+
+  if (!nextProfile) {
+    api.ui.toast({
+      variant: "warning",
+      message: `Account issue detected for ${limitedProfile}, but no available next account was found.`,
+      duration: 10000,
+    });
+    return;
+  }
+
+  const settings = await loadAccountSettings().catch(() => ({ autoSwitch: false }));
+  if (settings.autoSwitch) {
+    await switchProfileAfterLimit(api, limitedProfile, nextProfile.id, true);
+    return;
+  }
+
+  showLimitSwitchConfirm(api, limitedProfile, nextProfile.id);
+}
+
+async function handlePersistedLimitState(api: TuiApi): Promise<void> {
+  const profiles = await listProfileSummaries().catch(async (error) => {
+    await appendDiagnosticLog("persisted limit polling failed", [`error: ${toErrorMessage(error)}`]);
+    return [] as ProfileSummary[];
+  });
+
+  const limitedProfile = profiles.find((profile) => profile.isActive && profile.isLimited);
+  if (!limitedProfile || !limitedProfile.limitedAt) return;
+
+  const key = `${limitedProfile.id}:${limitedProfile.limitedAt}`;
+  if (lastPersistedLimitHandledKey === key) return;
+
+  const nextProfile = await findNextAvailableProfile().catch(async (error) => {
+    await appendDiagnosticLog("persisted limit next profile lookup failed", [`error: ${toErrorMessage(error)}`]);
+    return null;
+  });
+  if (!nextProfile) return;
+
+  lastPersistedLimitHandledKey = key;
+  await appendDiagnosticLog("persisted account limit detected", [
+    `limitedProfile: ${limitedProfile.id}`,
+    `nextProfile: ${nextProfile.id}`,
+    limitedProfile.limitedReason ? `reason: ${summarizeForLog(limitedProfile.limitedReason)}` : "reason: none",
+  ]);
+
+  const settings = await loadAccountSettings().catch(() => ({ autoSwitch: false }));
+  if (settings.autoSwitch) {
+    await switchProfileAfterLimit(api, limitedProfile.id, nextProfile.id, true);
+    return;
+  }
+
+  showLimitSwitchConfirm(api, limitedProfile.id, nextProfile.id);
+}
+
+function showLimitSwitchConfirm(api: TuiApi, limitedProfile: string, nextProfile: string): void {
+  api.ui.dialog.replace(() =>
+    api.ui.DialogConfirm({
+      title: "Usage limit detected",
+      message: `${limitedProfile} has an account/auth issue. Switch to ${nextProfile}?`,
+      onConfirm: () => {
+        api.ui.dialog.clear();
+        void switchProfileAfterLimit(api, limitedProfile, nextProfile, false);
+      },
+      onCancel: () => {
+        api.ui.dialog.clear();
+        api.ui.toast({ variant: "warning", message: `Account issue detected for ${limitedProfile}.`, duration: 8000 });
+      },
+    }),
+  );
+}
+
+async function switchProfileAfterLimit(api: TuiApi, limitedProfile: string, nextProfile: string, automatic: boolean): Promise<void> {
+  await appendDiagnosticLog("account limit switch started", [
+    `limitedProfile: ${limitedProfile}`,
+    `nextProfile: ${nextProfile}`,
+    `automatic: ${automatic}`,
+  ]);
+
+  const result = await runCli(["use", nextProfile]);
+  await appendDiagnosticLog("account limit switch completed", [
+    `limitedProfile: ${limitedProfile}`,
+    `nextProfile: ${nextProfile}`,
+    `exitCode: ${result.code}`,
+    result.stderr ? `stderr: ${summarizeForLog(result.stderr)}` : "stderr: none",
+  ]);
+
+  if (result.code === 0) {
+    api.ui.toast({
+      variant: "success",
+      message: `${automatic ? "Auto-switched" : "Switched"} from ${limitedProfile} to ${nextProfile}.`,
+      duration: 10000,
+    });
+    return;
+  }
+
+  api.ui.toast({ variant: "error", message: result.stderr || `Failed to switch to ${nextProfile}.`, duration: 10000 });
 }
 
 async function reconnectProfileFromDialog(api: TuiApi, profile: string): Promise<void> {
@@ -414,6 +716,31 @@ async function listProfileSummaries(): Promise<ProfileSummary[]> {
   return project.listProfileSummaries(project.getRuntimePaths(process.env));
 }
 
+async function loadAccountSettings(): Promise<AccountSettings> {
+  const project = await loadProjectModule();
+  return project.loadAccountSettings(project.getRuntimePaths(process.env));
+}
+
+async function setAutoSwitch(autoSwitch: boolean): Promise<AccountSettings> {
+  const project = await loadProjectModule();
+  return project.setAutoSwitch(project.getRuntimePaths(process.env), autoSwitch);
+}
+
+async function markActiveProfileLimited(reason: string): Promise<string | null> {
+  const project = await loadProjectModule();
+  return project.markActiveProfileLimited(project.getRuntimePaths(process.env), reason);
+}
+
+async function clearLimitedProfiles(): Promise<void> {
+  const project = await loadProjectModule();
+  await project.clearLimitedProfiles(project.getRuntimePaths(process.env));
+}
+
+async function findNextAvailableProfile(): Promise<ProfileSummary | null> {
+  const project = await loadProjectModule();
+  return project.findNextAvailableProfile(project.getRuntimePaths(process.env));
+}
+
 async function loadProjectModule(): Promise<ProjectModule> {
   const modulePath = path.join(process.cwd(), "dist", "src", "index.js");
   return (await import(pathToFileURL(modulePath).href)) as ProjectModule;
@@ -485,9 +812,98 @@ function summarizeForLog(input: string): string {
 
 function formatProfileDescription(profile: ProfileSummary): string {
   const parts = [profile.provider];
+  if (profile.isLimited) parts.push(`limited${profile.limitedReason ? `: ${profile.limitedReason}` : ""}`);
   if (profile.expiresAt) parts.push(`expires: ${profile.expiresAt}`);
   if (profile.lastSelectedAt) parts.push(`last used: ${profile.lastSelectedAt}`);
   return parts.join(" · ");
+}
+
+function extractLimitReason(event: unknown): string | null {
+  const text = collectStrings(event).join("\n");
+  if (!isUsageLimitText(text)) return null;
+  const message = extractErrorMessage(event) ?? text;
+  return summarizeForLog(message);
+}
+
+function extractRetryAttempt(event: unknown): number | null {
+  const propertiesAttempt = extractPropertyNumber(event, "attempt");
+  if (propertiesAttempt !== null) return propertiesAttempt;
+
+  const text = collectStrings(event).join("\n");
+  const match = /attempt\s*#?(\d+)/i.exec(text);
+  if (!match) return null;
+
+  const attempt = Number.parseInt(match[1] ?? "", 10);
+  return Number.isFinite(attempt) ? attempt : null;
+}
+
+function shouldWaitForRetryAttempt(event: unknown, retryAttempt: number | null): boolean {
+  return retryAttempt !== null && retryAttempt < 2;
+}
+
+function extractPropertyNumber(event: unknown, key: string): number | null {
+  if (typeof event !== "object" || event === null) return null;
+  const properties = (event as { properties?: unknown }).properties;
+  if (typeof properties !== "object" || properties === null) return null;
+  const value = (properties as Record<string, unknown>)[key];
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function isInternalLimitToast(event: unknown): boolean {
+  if (getEventType(event) !== "tui.toast.show") return false;
+  const message = extractToastMessage(event);
+  return message.startsWith("Usage limit detected") || message.includes("Auto-switched") || message.includes("Switched from");
+}
+
+function extractToastMessage(event: unknown): string {
+  if (typeof event !== "object" || event === null) return "";
+  const properties = (event as { properties?: unknown }).properties;
+  if (typeof properties !== "object" || properties === null) return "";
+  const message = (properties as { message?: unknown }).message;
+  return typeof message === "string" ? message : "";
+}
+
+function getEventType(event: unknown): string {
+  if (typeof event !== "object" || event === null) return "unknown";
+  const type = (event as { type?: unknown }).type;
+  return typeof type === "string" && type.trim() ? type : "unknown";
+}
+
+function summarizeEventForLog(event: unknown): string {
+  const text = collectStrings(event).join(" ");
+  return text ? summarizeForLog(text) : "no string payload";
+}
+
+function extractErrorMessage(event: unknown): string | null {
+  if (typeof event !== "object" || event === null) return null;
+  const properties = (event as { properties?: unknown }).properties;
+  if (typeof properties !== "object" || properties === null) return null;
+  const error = (properties as { error?: unknown }).error;
+  if (typeof error !== "object" || error === null) return null;
+
+  const directMessage = (error as { message?: unknown }).message;
+  if (typeof directMessage === "string" && directMessage.trim()) return directMessage;
+
+  const data = (error as { data?: unknown }).data;
+  if (typeof data === "object" && data !== null) {
+    const dataMessage = (data as { message?: unknown }).message;
+    if (typeof dataMessage === "string" && dataMessage.trim()) return dataMessage;
+  }
+
+  return null;
+}
+
+function collectStrings(value: unknown, seen = new Set<unknown>()): string[] {
+  if (typeof value === "string") return [value];
+  if (typeof value !== "object" || value === null || seen.has(value)) return [];
+  seen.add(value);
+
+  if (Array.isArray(value)) return value.flatMap((child) => collectStrings(child, seen));
+  return Object.values(value as Record<string, unknown>).flatMap((child) => collectStrings(child, seen));
+}
+
+function isUsageLimitText(input: string): boolean {
+  return ACCOUNT_SWITCH_TRIGGER_RE.test(input);
 }
 
 function toErrorMessage(error: unknown): string {

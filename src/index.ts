@@ -1,3 +1,4 @@
+export { clearLimitedProfiles, findNextAvailableProfile, loadAccountSettings, markActiveProfileLimited, setAutoSwitch } from "./account-settings.js";
 export { runCli } from "./cli.js";
 export { appendDebugLog, appendProjectLog } from "./log.js";
 export { ProfileStore } from "./profile-store.js";
@@ -6,4 +7,4 @@ export { getDailyLogPath, getRuntimePaths } from "./paths.js";
 export { validateProfileName } from "./validation.js";
 export type { LogEntry, LogLevel } from "./log.js";
 export type { ProfileSummary } from "./profile-summary.js";
-export type { ActiveProfileStatus, AppConfig, ProfileMetadata, RuntimePaths } from "./types.js";
+export type { AccountSettings, ActiveProfileStatus, AppConfig, ProfileMetadata, ProfileRuntimeStatus, RuntimePaths } from "./types.js";
