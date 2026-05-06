@@ -21,5 +21,5 @@ test("only native account slash commands are registered", async () => {
   const plugin = await fs.readFile(pluginPath, "utf8");
   const names = [...plugin.matchAll(/name:\s*"((?:as|ac)-[^"]+)"/g)].map((match) => match[1]);
 
-  assert.deepEqual(names, ["as-connect", "as-accounts", "as-settings"]);
+  assert.deepEqual(names, ["as-connect", "as-accounts", "as-settings", "as-export", "as-import"]);
 });

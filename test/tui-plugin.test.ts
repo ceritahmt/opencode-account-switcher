@@ -68,6 +68,20 @@ test("tui plugin registers settings and usage-limit auto-switch hooks", async ()
   assert.match(source, /runCli\(\["use", nextProfile\]\)/);
 });
 
+test("tui plugin registers encrypted account export and import commands", async () => {
+  const pluginPath = path.join(process.cwd(), "src", "tui-plugin.ts");
+  const source = await fs.readFile(pluginPath, "utf8");
+
+  assert.match(source, /name:\s*"as-export"/);
+  assert.match(source, /name:\s*"as-import"/);
+  assert.match(source, /Export Passphrase/);
+  assert.match(source, /Import File Path/);
+  assert.match(source, /Import Passphrase/);
+  assert.match(source, /as-account-exported\.json\.enc/);
+  assert.match(source, /exportAccountsEncrypted/);
+  assert.match(source, /importAccountsEncrypted/);
+});
+
 test("tui plugin renders active profile in home footer", async () => {
   const pluginPath = path.join(process.cwd(), "src", "tui-plugin.ts");
   const source = await fs.readFile(pluginPath, "utf8");

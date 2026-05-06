@@ -2,8 +2,9 @@
 import { spawn } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { exportAccountsEncrypted, getDefaultAccountExportPath, importAccountsEncrypted } from "./account-transfer.js";
 import { toSafeErrorMessage, UserFacingError } from "./errors.js";
-import { formatAddProviderSelection, formatHelp, formatList, formatMenu, formatProviders, formatRemovedProfile, formatSavedProfile, formatUpdatedProfile, formatUsingProfile, formatWho } from "./format.js";
+import { formatAddProviderSelection, formatExportedAccounts, formatHelp, formatImportedAccounts, formatList, formatMenu, formatProviders, formatRemovedProfile, formatSavedProfile, formatUpdatedProfile, formatUsingProfile, formatWho } from "./format.js";
 import { appendProjectLog } from "./log.js";
 import { getRuntimePaths } from "./paths.js";
 import { ProfileStore } from "./profile-store.js";
@@ -99,8 +100,29 @@ async function runCliCommand(command: string | undefined, args: string[], store:
     return ok(formatRemovedProfile(await store.removeProfile(name)));
   }
 
+  if (command === "export") {
+    const passphrase = getPassphraseFromEnv(args);
+    const outputPath = getOption(args, "--output") ?? getDefaultAccountExportPath();
+    return ok(formatExportedAccounts(await exportAccountsEncrypted(store.paths, { outputPath, passphrase })));
+  }
+
+  if (command === "import") {
+    const inputPath = args[0];
+    if (!inputPath || inputPath.startsWith("--")) throw new UserFacingError("Missing import file path. Usage: npm run as -- import <path> --passphrase-env OPENCODE_AS_EXPORT_PASSPHRASE");
+    const passphrase = getPassphraseFromEnv(args);
+    return ok(formatImportedAccounts(await importAccountsEncrypted(store.paths, { inputPath, passphrase })));
+  }
+
   if (args.length === 0) return ok(formatUsingProfile(await store.useProfile(command)));
   throw new UserFacingError(`Unknown command: ${command}`);
+}
+
+function getPassphraseFromEnv(args: string[]): string {
+  const envName = getOption(args, "--passphrase-env");
+  if (!envName) throw new UserFacingError("Missing --passphrase-env. Refusing to read passphrases from command arguments.");
+  const passphrase = process.env[envName];
+  if (!passphrase) throw new UserFacingError(`Environment variable is empty: ${envName}`);
+  return passphrase;
 }
 
 function getOption(args: string[], option: string): string | undefined {

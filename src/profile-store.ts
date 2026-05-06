@@ -10,7 +10,7 @@ import type { ActiveProfileStatus, ProfileMetadata, RuntimePaths } from "./types
 import { assertValidAuthJson, assertValidMetadata, validateProfileName } from "./validation.js";
 
 export class ProfileStore {
-  constructor(private readonly paths: RuntimePaths) {}
+  constructor(readonly paths: RuntimePaths) {}
 
   async listProfiles(): Promise<ProfileMetadata[]> {
     await ensureSecureDir(this.paths.profilesDir);

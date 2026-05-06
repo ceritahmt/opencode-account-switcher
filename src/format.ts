@@ -1,4 +1,5 @@
 import type { ActiveProfileStatus, ProfileMetadata } from "./types.js";
+import type { AccountExportResult, AccountImportResult } from "./account-transfer.js";
 
 export function formatProviders(): string {
   return "OpenAI  supported";
@@ -52,6 +53,14 @@ export function formatRemovedProfile(name: string): string {
   return [`Profile moved to trash: ${name}`, "Trash is not secure deletion."].join("\n");
 }
 
+export function formatExportedAccounts(result: AccountExportResult): string {
+  return [`Encrypted account export created: ${result.outputPath}`, `Profiles exported: ${result.profileCount}`].join("\n");
+}
+
+export function formatImportedAccounts(result: AccountImportResult): string {
+  return [`Encrypted account export imported: ${result.inputPath}`, `Profiles imported: ${result.importedProfileCount}`].join("\n");
+}
+
 export function formatWho(status: ActiveProfileStatus): string {
   if (!status.activeProfile) {
     return [`Active profile: none`, "Provider: OpenAI", `Target: ${status.authPath}`, `Status: ${status.status}`].join("\n");
@@ -89,6 +98,8 @@ export function formatMenu(status: ActiveProfileStatus, profiles: ProfileMetadat
     "  npm run as -- update <name> --provider openai --current",
     "  npm run as -- use <name>",
     "  npm run as -- rm <name>",
+    "  npm run as -- export --passphrase-env OPENCODE_AS_EXPORT_PASSPHRASE",
+    "  npm run as -- import <path> --passphrase-env OPENCODE_AS_EXPORT_PASSPHRASE",
     "  npm run as -- who",
     "  npm run as -- ls",
     "  npm run as -- providers",
@@ -108,6 +119,8 @@ export function formatHelp(): string {
     "  npm run as -- use <name>",
     "  npm run as -- <name>",
     "  npm run as -- rm <name>",
+    "  npm run as -- export --passphrase-env OPENCODE_AS_EXPORT_PASSPHRASE",
+    "  npm run as -- import <path> --passphrase-env OPENCODE_AS_EXPORT_PASSPHRASE",
     "  npm run as -- providers",
   ].join("\n");
 }

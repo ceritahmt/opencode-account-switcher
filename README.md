@@ -96,6 +96,8 @@ If you already have plugins, keep them and add `@ceritahmt/opencode-as@latest` t
 /as-connect
 /as-accounts
 /as-settings
+/as-export
+/as-import
 ```
 
 `/as-connect` opens a native TUI prompt for the profile name, then opens OpenCode's native interactive provider login/connect dialog through the TUI plugin. After OpenAI auth changes, it auto-saves that provider object as the chosen profile.
@@ -104,12 +106,18 @@ If you already have plugins, keep them and add `@ceritahmt/opencode-as@latest` t
 
 `/as-settings` opens account settings. It can enable or disable auto-switch, clear locally remembered limited-account markers, and show the installed package version.
 
+`/as-export` asks for an export passphrase and writes all saved account profiles to an encrypted file in the current OpenCode working directory: `as-account-exported.json.enc`. The file contains profile auth snapshots, metadata, settings, and local limited markers.
+
+`/as-import` asks for the encrypted export file path, then the passphrase, and imports all profiles from that file. Native file picker support is not exposed by the current TUI plugin API, so the file path is entered manually.
+
 After OpenCode login/connect completes, switch profiles with `/as-accounts`:
 
 ```text
 /as-connect
 /as-accounts
 /as-settings
+/as-export
+/as-import
 ```
 
 Interactive login is intentionally not run from the OpenCode markdown command because it is not a reliable TTY prompt environment.
@@ -125,12 +133,13 @@ The native interactive path is `/as-connect`, which triggers OpenCode's `provide
 4. Complete OpenCode's native OpenAI connect/login flow.
 5. Open `/as-accounts` to view saved profiles, switch accounts, reconnect expired auth, or delete a profile.
 6. Open `/as-settings` to enable/disable auto-switch, clear limited markers, and see the installed package version.
+7. Use `/as-export` and `/as-import` for encrypted account backup/restore.
 
 When OpenCode reports a usage-limit message, the plugin marks the current profile as limited for 5 hours. If auto-switch is disabled it asks before switching; if auto-switch is enabled it switches to the next available profile automatically.
 
 ## OpenCode command integration
 
-`/as-connect`, `/as-accounts`, and `/as-settings` are native TUI paths and are implemented by the package TUI plugin (`./tui`).
+`/as-connect`, `/as-accounts`, `/as-settings`, `/as-export`, and `/as-import` are native TUI paths and are implemented by the package TUI plugin (`./tui`).
 Usage/auth error capture is exported as the package server plugin (`./server`), so server-side retry/status events can mark the active profile as limited even when the TUI event bus does not receive the retry banner.
 
 Published setup needs both OpenCode config files:

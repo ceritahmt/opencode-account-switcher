@@ -78,6 +78,8 @@ type CliResult = { code: number; stdout: string; stderr: string };
 type AccountAction = "use" | "reconnect" | "delete";
 type SettingsAction = "auto-on" | "auto-off" | "clear-limits" | "version";
 type AccountSettings = { autoSwitch: boolean };
+type AccountExportResult = { outputPath: string; profileCount: number };
+type AccountImportResult = { inputPath: string; importedProfileCount: number; skippedProfileCount: number };
 type ProfileSummary = {
   id: string;
   provider: string;
@@ -91,8 +93,11 @@ type ProfileSummary = {
 };
 type ProjectModule = {
   clearLimitedProfiles: (paths: unknown) => Promise<void>;
+  exportAccountsEncrypted: (paths: unknown, options: { outputPath?: string; passphrase: string }) => Promise<AccountExportResult>;
   findNextAvailableProfile: (paths: unknown) => Promise<ProfileSummary | null>;
+  getDefaultAccountExportPath: (cwd?: string) => string;
   getRuntimePaths: (env?: NodeJS.ProcessEnv) => unknown;
+  importAccountsEncrypted: (paths: unknown, options: { inputPath: string; passphrase: string }) => Promise<AccountImportResult>;
   loadAccountSettings: (paths: unknown) => Promise<AccountSettings>;
   listProfileSummaries: (paths: unknown) => Promise<ProfileSummary[]>;
   runCli: (argv: string[], env?: NodeJS.ProcessEnv) => Promise<CliResult>;
@@ -150,6 +155,30 @@ const plugin = {
         },
         onSelect: () => {
           void showAccountSettingsDialog(api);
+        },
+      },
+      {
+        title: "AS: Export accounts",
+        value: "opencode-as.export",
+        description: "Export all saved accounts to encrypted backup in current path",
+        category: "Account",
+        slash: {
+          name: "as-export",
+        },
+        onSelect: () => {
+          showExportPassphrasePrompt(api);
+        },
+      },
+      {
+        title: "AS: Import accounts",
+        value: "opencode-as.import",
+        description: "Import accounts from encrypted backup file",
+        category: "Account",
+        slash: {
+          name: "as-import",
+        },
+        onSelect: () => {
+          showImportPathPrompt(api);
         },
       },
     ]);
@@ -268,6 +297,74 @@ function showConnectProfilePrompt(api: TuiApi): void {
   );
 }
 
+function showExportPassphrasePrompt(api: TuiApi): void {
+  api.ui.dialog.replace(() =>
+    api.ui.DialogPrompt({
+      title: "Export Passphrase",
+      placeholder: "passphrase",
+      value: "",
+      onConfirm: (raw) => {
+        const passphrase = raw.trim();
+        if (!passphrase) {
+          api.ui.toast({ variant: "error", message: "Passphrase is required." });
+          return;
+        }
+
+        api.ui.dialog.clear();
+        void exportAccountsFromDialog(api, passphrase);
+      },
+      onCancel: () => {
+        api.ui.dialog.clear();
+      },
+    }),
+  );
+}
+
+function showImportPathPrompt(api: TuiApi): void {
+  api.ui.dialog.replace(() =>
+    api.ui.DialogPrompt({
+      title: "Import File Path",
+      placeholder: "as-account-exported.json.enc",
+      value: "as-account-exported.json.enc",
+      onConfirm: (raw) => {
+        const inputPath = raw.trim();
+        if (!inputPath) {
+          api.ui.toast({ variant: "error", message: "Import file path is required." });
+          return;
+        }
+
+        showImportPassphrasePrompt(api, inputPath);
+      },
+      onCancel: () => {
+        api.ui.dialog.clear();
+      },
+    }),
+  );
+}
+
+function showImportPassphrasePrompt(api: TuiApi, inputPath: string): void {
+  api.ui.dialog.replace(() =>
+    api.ui.DialogPrompt({
+      title: "Import Passphrase",
+      placeholder: "passphrase",
+      value: "",
+      onConfirm: (raw) => {
+        const passphrase = raw.trim();
+        if (!passphrase) {
+          api.ui.toast({ variant: "error", message: "Passphrase is required." });
+          return;
+        }
+
+        api.ui.dialog.clear();
+        void importAccountsFromDialog(api, inputPath, passphrase);
+      },
+      onCancel: () => {
+        api.ui.dialog.clear();
+      },
+    }),
+  );
+}
+
 async function showAccountSettingsDialog(api: TuiApi): Promise<void> {
   await appendDiagnosticLog("/as-settings started");
 
@@ -346,19 +443,43 @@ async function applySettingsAction(api: TuiApi, action: SettingsAction): Promise
   }
 }
 
-async function loadPackageVersion(): Promise<string> {
-  const candidates = [new URL("../../package.json", import.meta.url), new URL("../package.json", import.meta.url)];
+async function exportAccountsFromDialog(api: TuiApi, passphrase: string): Promise<void> {
+  await appendDiagnosticLog("/as-export started");
 
-  for (const candidate of candidates) {
-    try {
-      const manifest = JSON.parse(await fs.readFile(candidate, "utf8")) as { version?: unknown };
-      if (typeof manifest.version === "string" && manifest.version.trim()) return manifest.version;
-    } catch {
-      // Best-effort display only.
-    }
+  try {
+    const result = await exportAccounts(passphrase);
+    await appendDiagnosticLog("/as-export completed", [`outputPath: ${result.outputPath}`, `profiles: ${result.profileCount}`]);
+    api.ui.toast({
+      variant: "success",
+      message: `Exported ${result.profileCount} profiles to ${result.outputPath}`,
+      duration: 10000,
+    });
+  } catch (error) {
+    const message = toErrorMessage(error);
+    await appendDiagnosticLog("/as-export failed", [`error: ${message}`]);
+    api.ui.toast({ variant: "error", message, duration: 10000 });
   }
+}
 
-  return "unknown";
+async function importAccountsFromDialog(api: TuiApi, inputPath: string, passphrase: string): Promise<void> {
+  await appendDiagnosticLog("/as-import started", [`inputPath: ${inputPath}`]);
+
+  try {
+    const result = await importAccounts(inputPath, passphrase);
+    await appendDiagnosticLog("/as-import completed", [
+      `inputPath: ${result.inputPath}`,
+      `profiles: ${result.importedProfileCount}`,
+    ]);
+    api.ui.toast({
+      variant: "success",
+      message: `Imported ${result.importedProfileCount} profiles from ${result.inputPath}`,
+      duration: 10000,
+    });
+  } catch (error) {
+    const message = toErrorMessage(error);
+    await appendDiagnosticLog("/as-import failed", [`error: ${message}`]);
+    api.ui.toast({ variant: "error", message, duration: 10000 });
+  }
 }
 
 async function showAccountsDialog(api: TuiApi): Promise<void> {
@@ -769,6 +890,19 @@ async function clearLimitedProfiles(): Promise<void> {
   await project.clearLimitedProfiles(project.getRuntimePaths(process.env));
 }
 
+async function exportAccounts(passphrase: string): Promise<AccountExportResult> {
+  const project = await loadProjectModule();
+  return project.exportAccountsEncrypted(project.getRuntimePaths(process.env), {
+    outputPath: project.getDefaultAccountExportPath(process.cwd()),
+    passphrase,
+  });
+}
+
+async function importAccounts(inputPath: string, passphrase: string): Promise<AccountImportResult> {
+  const project = await loadProjectModule();
+  return project.importAccountsEncrypted(project.getRuntimePaths(process.env), { inputPath, passphrase });
+}
+
 async function findNextAvailableProfile(): Promise<ProfileSummary | null> {
   const project = await loadProjectModule();
   return project.findNextAvailableProfile(project.getRuntimePaths(process.env));
@@ -776,6 +910,21 @@ async function findNextAvailableProfile(): Promise<ProfileSummary | null> {
 
 async function loadProjectModule(): Promise<ProjectModule> {
   return (await import("./index.js")) as ProjectModule;
+}
+
+async function loadPackageVersion(): Promise<string> {
+  const candidates = [new URL("../../package.json", import.meta.url), new URL("../package.json", import.meta.url)];
+
+  for (const candidate of candidates) {
+    try {
+      const manifest = JSON.parse(await fs.readFile(candidate, "utf8")) as { version?: unknown };
+      if (typeof manifest.version === "string" && manifest.version.trim()) return manifest.version;
+    } catch {
+      // Best-effort version display only.
+    }
+  }
+
+  return "unknown";
 }
 
 function resolveAuthPath(): string {

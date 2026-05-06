@@ -19,7 +19,7 @@ Temel amaç:
 - OpenCode’un aktif provider auth dosyasından sadece seçili provider objesini almak.
 - Bu objeyi named profile olarak saklamak.
 - İstenilen profile’ı tekrar OpenCode auth dosyasına merge ederek aktif etmek.
-- TUI tarafında `/as-connect`, `/as-accounts` ve `/as-settings` native slash command’leri ile kullanıcı akışı sağlamak.
+- TUI tarafında `/as-connect`, `/as-accounts`, `/as-settings`, `/as-export` ve `/as-import` native slash command’leri ile kullanıcı akışı sağlamak.
 - OpenCode usage-limit event’lerinde aktif account’u limited olarak işaretlemek ve gerekirse sonraki profile’a geçmek.
 
 Published package kurulumu için önerilen yol:
@@ -28,7 +28,7 @@ Published package kurulumu için önerilen yol:
 opencode plugin @ceritahmt/opencode-as@latest --global
 ```
 
-Bu installer package `exports["./server"]` ve `exports["./tui"]` target’larını okuyup server plugin’i `opencode.json`, TUI slash command plugin’ini `tui.json` tarafına ekleyebilir. Sadece `opencode.json` içine manuel package eklenirse server hook’lar çalışabilir ama `/as-connect`, `/as-accounts`, `/as-settings` görünmeyebilir.
+Bu installer package `exports["./server"]` ve `exports["./tui"]` target’larını okuyup server plugin’i `opencode.json`, TUI slash command plugin’ini `tui.json` tarafına ekleyebilir. Sadece `opencode.json` içine manuel package eklenirse server hook’lar çalışabilir ama `/as-connect`, `/as-accounts`, `/as-settings`, `/as-export`, `/as-import` görünmeyebilir.
 
 OpenCode `@latest` spec’ini cache’leyebilir. Installer output’unda sadece `Detected server target` görünürse cache eski package’ı okuyordur; exact version ile `opencode plugin @ceritahmt/opencode-as@<version> --global --force` öner veya `~/.cache/opencode/packages/@ceritahmt/opencode-as@latest` cache’ini temizlet.
 
@@ -39,7 +39,7 @@ npm run build
 npm test
 ```
 
-Kullanıcı akışı OpenCode TUI içinde `/as-connect`, `/as-accounts` ve `/as-settings` üzerinden anlatılmalı; README veya user-facing dokümanda `npm run as -- use/add --provider openai` örnekleri önerilmemeli.
+Kullanıcı akışı OpenCode TUI içinde `/as-connect`, `/as-accounts`, `/as-settings`, `/as-export`, `/as-import` üzerinden anlatılmalı; README veya user-facing dokümanda `npm run as -- use/add --provider openai` örnekleri önerilmemeli.
 
 Her code değişikliğinden sonra en azından şunu çalıştır:
 
@@ -163,6 +163,16 @@ XDG_DATA_HOME=/tmp/xdg-data
   - `loadAccountSettings()`, `setAutoSwitch()`, `markActiveProfileLimited()`, `clearLimitedProfiles()`, `findNextAvailableProfile()` export eder.
   - Config mutation işlemlerini lock içinde yapar.
 
+### Account Transfer
+
+- `src/account-transfer.ts`
+  - `/as-export` ve `/as-import` için encrypted all-account backup/restore helper’larını içerir.
+  - `exportAccountsEncrypted()`, `importAccountsEncrypted()`, `getDefaultAccountExportPath()` export eder.
+  - Export default current working directory içinde `as-account-exported.json.enc` dosyasına yazılır.
+  - Export içeriği tüm profile `auth.json` snapshot’ları, `metadata.json`, settings ve local `profileStatus` bilgilerini içerir.
+  - Dosya encrypted olduğu halde auth secret içerdiği varsayılmalı; plain JSON export önerilmez.
+  - Import mevcut profile’ların üzerine yazmamalı; conflict varsa fail etmeli.
+
 ### TUI Plugin
 
 - `src/tui-plugin.ts`
@@ -174,6 +184,8 @@ XDG_DATA_HOME=/tmp/xdg-data
   - `/as-connect`: OpenAI provider connect flow + auto-save.
   - `/as-accounts`: Profile listesi + action seçimi.
   - `/as-settings`: Auto-switch ayarı, limited marker temizleme ve version bilgisi.
+  - `/as-export`: Current working directory içine encrypted account backup oluşturur.
+  - `/as-import`: Encrypted backup path ve passphrase alıp account profile’larını import eder.
   - TUI event bus üzerinden usage-limit sinyali yakalamayı dener.
   - Server plugin tarafından yazılan persisted limited state’i polling ile görüp confirmation/auto-switch akışını başlatır.
   - TUI içinde CLI spawn etmek için `process.execPath` kullanma; OpenCode runtime’da bu `opencode` executable olabilir.
@@ -230,6 +242,26 @@ Beklenen akış:
 3. `Auto-switch: Disabled` seçilirse `settings.autoSwitch = false` yazılır.
 4. `Clear limited markers` seçilirse `profileStatus` altındaki limited marker’lar temizlenir.
 5. Dialog içinde installed package version read-only olarak gösterilir.
+
+### `/as-export`
+
+Beklenen akış:
+
+1. `Export Passphrase` prompt açılır.
+2. Passphrase boşsa error toast gösterilir.
+3. Current working directory içine `as-account-exported.json.enc` yazılır.
+4. Dosya zaten varsa overwrite yapılmaz; error toast gösterilir.
+5. Export tüm profile auth snapshot’larını, metadata’yı, settings’i ve local limited marker’ları encrypted payload içinde taşır.
+
+### `/as-import`
+
+Beklenen akış:
+
+1. `Import File Path` prompt açılır; default değer `as-account-exported.json.enc` olur.
+2. Native file picker yoktur; path kullanıcıdan text olarak alınır.
+3. `Import Passphrase` prompt açılır.
+4. Export decrypt edilir ve tüm profile’lar import edilir.
+5. Mevcut profile ile isim çakışması varsa overwrite yapılmaz; import fail eder.
 
 ### Usage Limit Auto-switch
 
