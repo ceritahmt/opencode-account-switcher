@@ -127,10 +127,7 @@ function extractErrorTexts(value: unknown): string[] {
   const record = getRecord(value);
   if (!record) return typeof value === "string" ? [value] : [];
 
-  const texts = extractMessageTexts(record);
-  const responseBody = record.responseBody;
-  if (typeof responseBody === "string") texts.push(responseBody);
-  return texts;
+  return extractMessageTexts(record);
 }
 
 function extractMessageTexts(value: unknown): string[] {

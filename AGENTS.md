@@ -12,7 +12,7 @@ Bu dosya, bu repository üzerinde çalışan AI coding agent’ları için proje
 
 ## Project Özeti
 
-`@ceritahmt/opencode-as`, OpenCode için OpenAI account/profile switcher’dır. CLI bin adı `opencode-as` olarak kalır.
+`@ceritahmt/opencode-as`, OpenCode için provider account/profile switcher’dır. CLI bin adı `opencode-as` olarak kalır.
 
 Temel amaç:
 
@@ -130,7 +130,7 @@ XDG_DATA_HOME=/tmp/xdg-data
 
 - `src/provider-auth.ts`
   - Provider auth extraction ve merge logic.
-  - Şu an desteklenen provider: `openai`.
+  - Provider id’leri OpenCode `auth.json` içindeki provider key’lerinden dinamik okunur; örn. `openai`, `zai-coding-plan`.
   - `extractProviderAuth()` sadece provider objesini çıkarır.
   - `mergeProviderAuth()` aktif auth dosyasındaki diğer provider’ları korur.
 
@@ -181,7 +181,7 @@ XDG_DATA_HOME=/tmp/xdg-data
   - Published TUI config içinde `.opencode/tui.json` `plugin: ["@ceritahmt/opencode-as@latest"]` şeklinde yüklenir.
   - Local dev shim: `.opencode/plugins/as-tui.ts` built `dist/src/tui-plugin.js` default export’unu re-export eder.
   - Local dev config `.opencode/tui.json` `plugin: ["./plugins/as-tui.ts"]` kullanır; `npm run build` sonrası OpenCode restart gerekir.
-  - `/as-connect`: OpenAI provider connect flow + auto-save.
+  - `/as-connect`: Provider connect flow + değişen provider auto-detect + auto-save.
   - `/as-accounts`: Profile listesi + action seçimi.
   - `/as-settings`: Auto-switch ayarı, limited marker temizleme ve version bilgisi.
   - `/as-export`: Current working directory içine encrypted account backup oluşturur.
@@ -216,8 +216,8 @@ Beklenen akış:
 1. `Profile Name` prompt açılır.
 2. Input her açılışta boş olmalı.
 3. `provider.connect` native OpenCode command’i trigger edilir.
-4. `~/.local/share/opencode/auth.json` içindeki OpenAI provider hash değişimi beklenir.
-5. Auth değişirse `runCli(["add", profile, "--provider", "openai", "--current"])` ile profile kaydedilir.
+4. `~/.local/share/opencode/auth.json` içindeki provider hash değişimi beklenir.
+5. Auth değişirse değişen provider auto-detect edilir ve `runCli(["add", profile, "--provider", detectedProvider, "--current"])` ile profile kaydedilir.
 
 ### `/as-accounts`
 

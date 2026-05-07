@@ -91,6 +91,11 @@ type ProfileSummary = {
   limitedReason: string | null;
   availableAt: string | null;
 };
+type ProviderAuthHashes = Record<string, string>;
+type ProviderAuthChangeDetection = {
+  provider: string | null;
+  ambiguous: boolean;
+};
 type ProjectModule = {
   clearLimitedProfiles: (paths: unknown) => Promise<void>;
   exportAccountsEncrypted: (paths: unknown, options: { outputPath?: string; passphrase: string }) => Promise<AccountExportResult>;
@@ -104,8 +109,8 @@ type ProjectModule = {
   setAutoSwitch: (paths: unknown, autoSwitch: boolean) => Promise<AccountSettings>;
 };
 
-const PROVIDER = "openai";
 const PROFILE_NAME_PATTERN = /^[a-zA-Z0-9._-]{1,64}$/;
+const PROVIDER_ID_PATTERN = /^[a-z0-9][a-z0-9._-]{0,127}$/;
 let lastLimitHandledAt = 0;
 let lastPersistedLimitHandledKey: string | null = null;
 let homeFooterStatus: string | null = null;
@@ -124,7 +129,7 @@ const plugin = {
       {
         title: "AS: Connect provider and save profile",
         value: "opencode-as.connect",
-        description: "Open native provider login/connect and save OpenAI as a profile",
+        description: "Open native provider login/connect and save the changed provider as a profile",
         category: "Account",
         slash: {
           name: "as-connect",
@@ -190,27 +195,27 @@ function registerLimitDetection(api: TuiApi): void {
 
   const disposers = [
     api.event?.on("session.next.retried", (event) => {
-      void appendDiagnosticLog("limit event received", [`eventType: ${getEventType(event)}`, `summary: ${summarizeEventForLog(event)}`]);
+      void appendDiagnosticLog("limit event received", [`eventType: ${getEventType(event)}`]);
       void handlePossibleLimitEvent(api, event);
     }),
     api.event?.on("session.error", (event) => {
-      void appendDiagnosticLog("limit event received", [`eventType: ${getEventType(event)}`, `summary: ${summarizeEventForLog(event)}`]);
+      void appendDiagnosticLog("limit event received", [`eventType: ${getEventType(event)}`]);
       void handlePossibleLimitEvent(api, event);
     }),
     api.event?.on("session.next.step.failed", (event) => {
-      void appendDiagnosticLog("limit event received", [`eventType: ${getEventType(event)}`, `summary: ${summarizeEventForLog(event)}`]);
+      void appendDiagnosticLog("limit event received", [`eventType: ${getEventType(event)}`]);
       void handlePossibleLimitEvent(api, event);
     }),
     api.event?.on("session.status", (event) => {
-      void appendDiagnosticLog("limit event received", [`eventType: ${getEventType(event)}`, `summary: ${summarizeEventForLog(event)}`]);
+      void appendDiagnosticLog("limit event received", [`eventType: ${getEventType(event)}`]);
       void handlePossibleLimitEvent(api, event);
     }),
     api.event?.on("message.updated", (event) => {
-      void appendDiagnosticLog("limit event received", [`eventType: ${getEventType(event)}`, `summary: ${summarizeEventForLog(event)}`]);
+      void appendDiagnosticLog("limit event received", [`eventType: ${getEventType(event)}`]);
       void handlePossibleLimitEvent(api, event);
     }),
     api.event?.on("tui.toast.show", (event) => {
-      void appendDiagnosticLog("limit event received", [`eventType: ${getEventType(event)}`, `summary: ${summarizeEventForLog(event)}`]);
+      void appendDiagnosticLog("limit event received", [`eventType: ${getEventType(event)}`]);
       void handlePossibleLimitEvent(api, event);
     }),
   ].filter((dispose): dispose is () => void => typeof dispose === "function");
@@ -554,7 +559,7 @@ function showAccountActionDialog(api: TuiApi, profile: ProfileSummary): void {
 
         if (option.value === "reconnect") {
           api.ui.dialog.clear();
-          void reconnectProfileFromDialog(api, profile.id);
+          void reconnectProfileFromDialog(api, profile);
           return;
         }
 
@@ -621,7 +626,7 @@ async function handlePossibleLimitEvent(api: TuiApi, event: unknown): Promise<vo
 
   const reason = extractLimitReason(event);
   if (!reason) {
-    await appendDiagnosticLog("limit event ignored", [`eventType: ${getEventType(event)}`, `summary: ${summarizeEventForLog(event)}`]);
+    await appendDiagnosticLog("limit event ignored", [`eventType: ${getEventType(event)}`]);
     return;
   }
 
@@ -729,97 +734,113 @@ async function switchProfileAfterLimit(api: TuiApi, limitedProfile: string, next
   api.ui.toast({ variant: "error", message: result.stderr || `Failed to switch to ${nextProfile}.`, duration: 10000 });
 }
 
-async function reconnectProfileFromDialog(api: TuiApi, profile: string): Promise<void> {
-  await appendDiagnosticLog("/as-accounts action selected", [`profile: ${profile}`, "action: reconnect"]);
+async function reconnectProfileFromDialog(api: TuiApi, profile: ProfileSummary): Promise<void> {
+  await appendDiagnosticLog("/as-accounts action selected", [`profile: ${profile.id}`, `provider: ${profile.provider}`, "action: reconnect"]);
 
-  const useResult = await runCli(["use", profile]);
+  const useResult = await runCli(["use", profile.id]);
   if (useResult.code !== 0) {
     await appendDiagnosticLog("/as-accounts reconnect failed before provider.connect", [
-      `profile: ${profile}`,
+      `profile: ${profile.id}`,
       `stderr: ${summarizeForLog(useResult.stderr)}`,
     ]);
-    api.ui.toast({ variant: "error", message: useResult.stderr || `Failed to use profile: ${profile}`, duration: 10000 });
+    api.ui.toast({ variant: "error", message: useResult.stderr || `Failed to use profile: ${profile.id}`, duration: 10000 });
     return;
   }
 
   const authPath = resolveAuthPath();
-  const beforeHash = await readProviderHash(authPath, PROVIDER).catch(() => null);
+  const beforeHash = await readProviderHash(authPath, profile.provider).catch(() => null);
   await appendDiagnosticLog("/as-accounts reconnect triggering provider.connect", [
-    `profile: ${profile}`,
+    `profile: ${profile.id}`,
+    `provider: ${profile.provider}`,
     `beforeHash: ${beforeHash ? "present" : "missing"}`,
   ]);
 
   api.ui.toast({
     variant: "info",
-    message: `Opening OpenAI reconnect for "${profile}". The profile will be updated after auth changes.`,
+    message: `Opening ${profile.provider} reconnect for "${profile.id}". The profile will be updated after auth changes.`,
   });
   api.command.trigger("provider.connect");
 
-  const changed = await waitForProviderAuthChange(authPath, PROVIDER, beforeHash, api.lifecycle?.signal);
-  await appendDiagnosticLog("/as-accounts reconnect auth wait completed", [`profile: ${profile}`, `changed: ${changed}`]);
+  const changed = await waitForProviderAuthChange(authPath, profile.provider, beforeHash, api.lifecycle?.signal);
+  await appendDiagnosticLog("/as-accounts reconnect auth wait completed", [`profile: ${profile.id}`, `provider: ${profile.provider}`, `changed: ${changed}`]);
   if (!changed) {
     api.ui.toast({
       variant: "warning",
-      message: `OpenAI auth was not detected/changed. Profile was not updated: ${profile}`,
+      message: `${profile.provider} auth was not detected/changed. Profile was not updated: ${profile.id}`,
       duration: 10000,
     });
     return;
   }
 
-  const updateResult = await runCli(["update", profile, "--provider", PROVIDER, "--current"]);
+  const updateResult = await runCli(["update", profile.id, "--provider", profile.provider, "--current"]);
   await appendDiagnosticLog("/as-accounts reconnect profile update completed", [
-    `profile: ${profile}`,
+    `profile: ${profile.id}`,
+    `provider: ${profile.provider}`,
     `exitCode: ${updateResult.code}`,
     updateResult.stderr ? `stderr: ${summarizeForLog(updateResult.stderr)}` : "stderr: none",
   ]);
 
   if (updateResult.code === 0) {
-    api.ui.toast({ variant: "success", message: `Reconnected profile: ${profile}`, duration: 10000 });
+    api.ui.toast({ variant: "success", message: `Reconnected profile: ${profile.id}`, duration: 10000 });
     return;
   }
 
-  api.ui.toast({ variant: "error", message: updateResult.stderr || `Failed to reconnect profile: ${profile}`, duration: 10000 });
+  api.ui.toast({ variant: "error", message: updateResult.stderr || `Failed to reconnect profile: ${profile.id}`, duration: 10000 });
 }
 
 async function connectAndAutosave(api: TuiApi, profile: string): Promise<void> {
   await appendDiagnosticLog("/as-connect started", [`profile: ${profile}`]);
 
   const authPath = resolveAuthPath();
-  const beforeHash = await readProviderHash(authPath, PROVIDER).catch(() => null);
+  const beforeHashes = await readProviderHashes(authPath).catch(() => ({}));
   await appendDiagnosticLog("/as-connect auth snapshot captured", [
     `authPath: ${authPath}`,
-    `provider: ${PROVIDER}`,
-    `beforeHash: ${beforeHash ? "present" : "missing"}`,
+    `providers: ${Object.keys(beforeHashes).length}`,
   ]);
 
   api.ui.toast({
     variant: "info",
-    message: `Opening OpenAI connect. Profile will be saved as "${profile}" after auth changes.`,
+    message: `Opening provider connect. Profile will be saved as "${profile}" after auth changes.`,
   });
 
   await appendDiagnosticLog("/as-connect triggering provider.connect");
   api.command.trigger("provider.connect");
 
-  const changed = await waitForProviderAuthChange(authPath, PROVIDER, beforeHash, api.lifecycle?.signal);
-  await appendDiagnosticLog("/as-connect provider auth wait completed", [`changed: ${changed}`]);
-  if (!changed) {
+  const detection = await waitForChangedProviderAuth(authPath, beforeHashes, api.lifecycle?.signal);
+  await appendDiagnosticLog("/as-connect provider auth wait completed", [
+    `changed: ${detection.provider ? "true" : "false"}`,
+    detection.provider ? `provider: ${detection.provider}` : "provider: none",
+    `ambiguous: ${detection.ambiguous}`,
+  ]);
+  if (detection.ambiguous) {
     api.ui.toast({
       variant: "warning",
-      message: `OpenAI auth was not detected/changed. Try /as-connect again after connecting.`,
+      message: `Multiple provider auth changes were detected. Try /as-connect again and connect only one provider.`,
       duration: 10000,
     });
     return;
   }
 
-  const result = await runCli(["add", profile, "--provider", PROVIDER, "--current"]);
+  if (!detection.provider) {
+    api.ui.toast({
+      variant: "warning",
+      message: `Provider auth was not detected/changed. Try /as-connect again after connecting.`,
+      duration: 10000,
+    });
+    return;
+  }
+
+  const detectedProvider = detection.provider;
+  const result = await runCli(["add", profile, "--provider", detectedProvider, "--current"]);
   await appendDiagnosticLog("/as-connect profile save completed", [
+    `provider: ${detectedProvider}`,
     `exitCode: ${result.code}`,
     result.stderr ? `stderr: ${summarizeForLog(result.stderr)}` : "stderr: none",
   ]);
   if (result.code === 0) {
     api.ui.toast({
       variant: "success",
-      message: `Saved OpenAI profile "${profile}". Open /as-accounts to use it.`,
+      message: `Saved ${detectedProvider} profile "${profile}". Open /as-accounts to use it.`,
       duration: 10000,
     });
     return;
@@ -830,6 +851,23 @@ async function connectAndAutosave(api: TuiApi, profile: string): Promise<void> {
     message: result.stderr || `Failed to save profile "${profile}".`,
     duration: 10000,
   });
+}
+
+async function waitForChangedProviderAuth(
+  authPath: string,
+  beforeHashes: ProviderAuthHashes,
+  signal: AbortSignal | undefined,
+): Promise<ProviderAuthChangeDetection> {
+  const timeoutAt = Date.now() + 120_000;
+
+  while (!signal?.aborted && Date.now() < timeoutAt) {
+    const currentHashes = await readProviderHashes(authPath).catch(() => ({}));
+    const detection = detectChangedProvider(beforeHashes, currentHashes);
+    if (detection.provider || detection.ambiguous) return detection;
+    await delay(1000);
+  }
+
+  return { provider: null, ambiguous: false };
 }
 
 async function waitForProviderAuthChange(
@@ -850,11 +888,53 @@ async function waitForProviderAuthChange(
 }
 
 async function readProviderHash(authPath: string, provider: string): Promise<string | null> {
-  const raw = await fs.readFile(authPath, "utf8");
-  const auth = JSON.parse(raw) as Record<string, unknown>;
-  const value = auth[provider] ?? auth[`${provider}/`];
+  const auth = await readAuthObject(authPath);
+  const normalizedProvider = normalizeProviderId(provider);
+  const value = auth[normalizedProvider] ?? auth[`${normalizedProvider}/`];
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   return createHash("sha256").update(JSON.stringify(sortForJson(value))).digest("hex");
+}
+
+async function readProviderHashes(authPath: string): Promise<ProviderAuthHashes> {
+  const auth = await readAuthObject(authPath);
+  const hashes: ProviderAuthHashes = {};
+
+  for (const [key, value] of Object.entries(auth)) {
+    const provider = normalizeProviderId(key);
+    if (!isValidProviderId(provider)) continue;
+    if (!value || typeof value !== "object" || Array.isArray(value)) continue;
+    hashes[provider] = createHash("sha256").update(JSON.stringify(sortForJson(value))).digest("hex");
+  }
+
+  return hashes;
+}
+
+async function readAuthObject(authPath: string): Promise<Record<string, unknown>> {
+  const raw = await fs.readFile(authPath, "utf8");
+  const auth = JSON.parse(raw) as unknown;
+  if (typeof auth !== "object" || auth === null || Array.isArray(auth)) return {};
+  return auth as Record<string, unknown>;
+}
+
+function detectChangedProvider(beforeHashes: ProviderAuthHashes, currentHashes: ProviderAuthHashes): ProviderAuthChangeDetection {
+  const changedProviders = Object.keys(currentHashes)
+    .filter((provider) => currentHashes[provider] !== beforeHashes[provider])
+    .sort();
+  const newlyAddedProviders = changedProviders.filter((provider) => beforeHashes[provider] === undefined);
+  const candidates = newlyAddedProviders.length > 0 ? newlyAddedProviders : changedProviders;
+
+  return {
+    provider: candidates.length === 1 ? candidates[0] ?? null : null,
+    ambiguous: candidates.length > 1,
+  };
+}
+
+function normalizeProviderId(input: string): string {
+  return input.trim().toLowerCase().replace(/\/+$/, "");
+}
+
+function isValidProviderId(provider: string): boolean {
+  return PROVIDER_ID_PATTERN.test(provider) && provider !== "__proto__" && provider !== "constructor" && provider !== "prototype";
 }
 
 async function runCli(args: string[]): Promise<CliResult> {
@@ -1111,10 +1191,7 @@ function extractErrorTexts(value: unknown): string[] {
   const record = getRecord(value);
   if (!record) return typeof value === "string" ? [value] : [];
 
-  const texts = extractMessageTexts(record);
-  const responseBody = record.responseBody;
-  if (typeof responseBody === "string") texts.push(responseBody);
-  return texts;
+  return extractMessageTexts(record);
 }
 
 function extractMessageTexts(value: unknown): string[] {
@@ -1144,20 +1221,6 @@ function getEventType(event: unknown): string {
   if (typeof event !== "object" || event === null) return "unknown";
   const type = (event as { type?: unknown }).type;
   return typeof type === "string" && type.trim() ? type : "unknown";
-}
-
-function summarizeEventForLog(event: unknown): string {
-  const text = collectStrings(event).join(" ");
-  return text ? summarizeForLog(text) : "no string payload";
-}
-
-function collectStrings(value: unknown, seen = new Set<unknown>()): string[] {
-  if (typeof value === "string") return [value];
-  if (typeof value !== "object" || value === null || seen.has(value)) return [];
-  seen.add(value);
-
-  if (Array.isArray(value)) return value.flatMap((child) => collectStrings(child, seen));
-  return Object.values(value as Record<string, unknown>).flatMap((child) => collectStrings(child, seen));
 }
 
 function isUsageLimitText(input: string): boolean {

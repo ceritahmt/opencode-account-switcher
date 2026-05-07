@@ -2,13 +2,13 @@ import type { ActiveProfileStatus, ProfileMetadata } from "./types.js";
 import type { AccountExportResult, AccountImportResult } from "./account-transfer.js";
 
 export function formatProviders(): string {
-  return "OpenAI  supported";
+  return "OpenCode auth providers supported via /as-connect auto-detect";
 }
 
 export function formatSavedProfile(metadata: ProfileMetadata): string {
   return [
     `Adding profile: ${metadata.id}`,
-    "Provider: OpenAI",
+    `Provider: ${formatProviderName(metadata.provider)}`,
     "Saved auth scope: selected provider object only",
     `Profile saved: ${metadata.id}`,
     `Use it with: npm run as -- use ${metadata.id}`,
@@ -18,7 +18,7 @@ export function formatSavedProfile(metadata: ProfileMetadata): string {
 export function formatUpdatedProfile(metadata: ProfileMetadata): string {
   return [
     `Updating profile: ${metadata.id}`,
-    "Provider: OpenAI",
+    `Provider: ${formatProviderName(metadata.provider)}`,
     "Saved auth scope: selected provider object only",
     `Profile updated: ${metadata.id}`,
   ].join("\n");
@@ -28,11 +28,11 @@ export function formatAddProviderSelection(profileName: string, provider = "open
   return [
     `Profile: ${profileName}`,
     "Select provider:",
-    "  OpenAI",
+    `  ${formatProviderName(provider)}`,
     "",
     "OpenCode içinde login/connect için:",
     "  /connect",
-    "  provider: OpenAI",
+    `  provider: ${formatProviderName(provider)}`,
     "",
     "Terminal alternatifi:",
     `  opencode providers login --provider ${provider}`,
@@ -63,12 +63,12 @@ export function formatImportedAccounts(result: AccountImportResult): string {
 
 export function formatWho(status: ActiveProfileStatus): string {
   if (!status.activeProfile) {
-    return [`Active profile: none`, "Provider: OpenAI", `Target: ${status.authPath}`, `Status: ${status.status}`].join("\n");
+    return [`Active profile: none`, "Provider: none", `Target: ${status.authPath}`, `Status: ${status.status}`].join("\n");
   }
 
   return [
     `Active profile: ${status.activeProfile}`,
-    `Provider: ${status.metadata?.provider === "openai" ? "OpenAI" : "unknown"}`,
+    `Provider: ${status.metadata ? formatProviderName(status.metadata.provider) : "unknown"}`,
     `Target: ${status.authPath}`,
     `Status: ${status.status}`,
     `Last selected: ${status.metadata?.lastSelectedAt ?? "never"}`,
@@ -87,7 +87,7 @@ export function formatList(profiles: ProfileMetadata[], activeProfile: string | 
 export function formatMenu(status: ActiveProfileStatus, profiles: ProfileMetadata[]): string {
   return [
     `Current: ${status.activeProfile ?? "none"}`,
-    "Provider: OpenAI",
+    `Provider: ${status.metadata ? formatProviderName(status.metadata.provider) : "none"}`,
     `Status: ${status.status}`,
     "",
     formatList(profiles, status.activeProfile),
@@ -104,6 +104,11 @@ export function formatMenu(status: ActiveProfileStatus, profiles: ProfileMetadat
     "  npm run as -- ls",
     "  npm run as -- providers",
   ].join("\n");
+}
+
+function formatProviderName(provider: string): string {
+  if (provider === "openai") return "OpenAI";
+  return provider;
 }
 
 export function formatHelp(): string {

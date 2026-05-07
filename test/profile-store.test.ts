@@ -47,6 +47,42 @@ test("snapshots current auth and switches back to it", async () => {
   assert.doesNotMatch(metadata, /secret-a/);
 });
 
+test("snapshots dynamic provider auth and preserves other providers on use", async () => {
+  const fixture = await createFixture();
+  await fs.writeFile(
+    fixture.authPath,
+    JSON.stringify({
+      "zai-coding-plan": { type: "api", key: "secret-a" },
+      anthropic: { type: "api", key: "keep-me" },
+    }),
+  );
+
+  const add = await runCli(["add", "work", "--provider", "zai-coding-plan", "--current"], fixture.env);
+  assert.equal(add.code, 0, add.stderr);
+
+  const paths = getRuntimePaths(fixture.env);
+  const storedProfileAuth = JSON.parse(await fs.readFile(path.join(paths.profilesDir, "work", "auth.json"), "utf8")) as Record<string, unknown>;
+  assert.deepEqual(Object.keys(storedProfileAuth), ["zai-coding-plan"]);
+
+  await fs.writeFile(
+    fixture.authPath,
+    JSON.stringify({
+      "zai-coding-plan": { type: "api", key: "secret-b" },
+      anthropic: { type: "api", key: "keep-me" },
+    }),
+  );
+
+  const use = await runCli(["use", "work"], fixture.env);
+  assert.equal(use.code, 0, use.stderr);
+
+  const restored = JSON.parse(await fs.readFile(fixture.authPath, "utf8")) as {
+    "zai-coding-plan": { key: string };
+    anthropic: { key: string };
+  };
+  assert.equal(restored["zai-coding-plan"].key, "secret-a");
+  assert.equal(restored.anthropic.key, "keep-me");
+});
+
 test("reports drift when active auth changes outside opencode-as", async () => {
   const fixture = await createFixture();
   await fs.writeFile(fixture.authPath, JSON.stringify({ openai: { type: "api", key: "secret-a" } }));
@@ -124,7 +160,7 @@ test("rejects tampered profile metadata on use", async () => {
       {
         id: "other",
         label: "work",
-        provider: "anthropic",
+        provider: "invalid/provider",
         target: "opencode",
         createdAt: "2026-01-01T00:00:00.000Z",
         updatedAt: "2026-01-01T00:00:00.000Z",
@@ -159,7 +195,7 @@ test("add without --current shows provider login/save next steps", async () => {
 
   assert.equal(add.code, 0, add.stderr);
   assert.match(add.stdout, /Select provider:/);
-  assert.match(add.stdout, /npm run as -- add work --provider openai --current/);
+  assert.match(add.stdout, /npm run as -- add work --provider [a-z0-9._-]+ --current/);
 });
 
 test("rejects missing selected provider auth", async () => {

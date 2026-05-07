@@ -1,9 +1,9 @@
 import { UserFacingError } from "./errors.js";
 import { sha256AuthHash } from "./hash.js";
 import type { ProviderId } from "./types.js";
-import { assertValidAuthJson } from "./validation.js";
+import { assertValidAuthJson, PROVIDER_ID_PATTERN } from "./validation.js";
 
-const SUPPORTED_PROVIDERS = new Set<ProviderId>(["openai"]);
+const DANGEROUS_PROVIDER_KEYS = new Set(["__proto__", "constructor", "prototype"]);
 
 export interface ProviderAuthSnapshot {
   provider: ProviderId;
@@ -14,10 +14,12 @@ export interface ProviderAuthSnapshot {
 
 export function parseProviderId(input: string | undefined): ProviderId {
   const provider = normalizeProviderId(input ?? "openai");
-  if (!SUPPORTED_PROVIDERS.has(provider as ProviderId)) {
-    throw new UserFacingError(`Unsupported provider: ${input ?? ""}. Supported provider: openai`);
+  if (!PROVIDER_ID_PATTERN.test(provider) || DANGEROUS_PROVIDER_KEYS.has(provider)) {
+    throw new UserFacingError(
+      `Invalid provider: ${input ?? ""}. Use lowercase letters, numbers, dot, underscore, or dash.`,
+    );
   }
-  return provider as ProviderId;
+  return provider;
 }
 
 export function extractProviderAuth(authRaw: string, providerInput: ProviderId): ProviderAuthSnapshot {

@@ -1,4 +1,4 @@
-export type ProviderId = "openai";
+export type ProviderId = string;
 
 export type AuthSource = "current-snapshot" | "connect-flow";
 

@@ -13,7 +13,12 @@ test("tui plugin registers native connect command", async () => {
   assert.match(source, /title:\s*"Profile Name"/);
   assert.match(source, /value:\s*""/);
   assert.doesNotMatch(source, /opencode-as\.pendingProfile/);
-  assert.match(source, /Saved OpenAI profile/);
+  assert.match(source, /Saved \$\{detectedProvider\} profile/);
+  assert.match(source, /waitForChangedProviderAuth/);
+  assert.match(source, /readProviderHashes/);
+  assert.match(source, /detectChangedProvider/);
+  assert.match(source, /newlyAddedProviders/);
+  assert.match(source, /Multiple provider auth changes were detected/);
 });
 
 test("tui plugin registers accounts command with action selection", async () => {
@@ -27,8 +32,8 @@ test("tui plugin registers accounts command with action selection", async () => 
   assert.match(source, /value:\s*"reconnect"/);
   assert.match(source, /value:\s*"delete"/);
   assert.match(source, /DialogConfirm/);
-  assert.match(source, /runCli\(\["use", profile\]\)/);
-  assert.match(source, /runCli\(\["update", profile, "--provider", PROVIDER, "--current"\]\)/);
+  assert.match(source, /runCli\(\["use", profile\.id\]\)/);
+  assert.match(source, /runCli\(\["update", profile\.id, "--provider", profile\.provider, "--current"\]\)/);
   assert.match(source, /runCli\(\["rm", profile\]\)/);
 });
 
@@ -53,6 +58,9 @@ test("tui plugin registers settings and usage-limit auto-switch hooks", async ()
   assert.match(source, /limit detection registration/);
   assert.match(source, /limit event received/);
   assert.match(source, /limit event ignored/);
+  assert.doesNotMatch(source, /summarizeEventForLog/);
+  assert.doesNotMatch(source, /summary: \$\{summarizeEventForLog/);
+  assert.doesNotMatch(source, /responseBody/);
   assert.match(source, /extractRetryAttempt/);
   assert.match(source, /extractPropertyNumber/);
   assert.match(source, /isInternalLimitToast/);
@@ -107,6 +115,7 @@ test("server plugin handles usage-limit events", async () => {
   assert.match(source, /server account limit detected/);
   assert.match(source, /extractSafeLimitText/);
   assert.match(source, /properties\.info/);
+  assert.doesNotMatch(source, /responseBody/);
   assert.match(source, /usage limit\|limit has been reached/);
   assert.match(source, /markActiveProfileLimited/);
 });

@@ -1,4 +1,4 @@
-# OpenCode OpenAI / ChatGPT Account Switcher
+# OpenCode Account Switcher
 
 Package name: `@ceritahmt/opencode-as`.
 
@@ -6,9 +6,9 @@ CLI name: `opencode-as`.
 
 Repository: https://github.com/ceritahmt/opencode-account-switcher
 
-OpenCode OpenAI account switcher for ChatGPT-style multi-account workflows.
+OpenCode provider account switcher for multi-account workflows.
 
-`opencode-as` helps manage multiple OpenAI / ChatGPT accounts in OpenCode by saving provider-specific auth objects as local profiles, switching between accounts from the native TUI, and handling usage-limit events with optional auto-switch.
+`opencode-as` helps manage multiple OpenCode provider accounts by saving provider-specific auth objects as local profiles, switching between accounts from the native TUI, and handling usage-limit events with optional auto-switch.
 
 ## Installation
 
@@ -100,7 +100,7 @@ If you already have plugins, keep them and add `@ceritahmt/opencode-as@latest` t
 /as-import
 ```
 
-`/as-connect` opens a native TUI prompt for the profile name, then opens OpenCode's native interactive provider login/connect dialog through the TUI plugin. After OpenAI auth changes, it auto-saves that provider object as the chosen profile.
+`/as-connect` opens a native TUI prompt for the profile name, then opens OpenCode's native interactive provider login/connect dialog through the TUI plugin. After auth changes, it auto-detects the changed provider key, such as `openai` or `zai-coding-plan`, and saves that provider object as the chosen profile.
 
 `/as-accounts` opens a native TUI account list. Select a profile first, then choose `Use`, `Reconnect`, or `Delete`. If the saved provider auth contains an expiry field, it is shown in the list.
 
@@ -130,7 +130,7 @@ The native interactive path is `/as-connect`, which triggers OpenCode's `provide
    - `.opencode/tui.json` for the TUI slash commands
 2. Restart OpenCode so plugin config is reloaded.
 3. In the OpenCode TUI, run `/as-connect` and enter a profile name.
-4. Complete OpenCode's native OpenAI connect/login flow.
+4. Complete OpenCode's native provider connect/login flow.
 5. Open `/as-accounts` to view saved profiles, switch accounts, reconnect expired auth, or delete a profile.
 6. Open `/as-settings` to enable/disable auto-switch, clear limited markers, and see the installed package version.
 7. Use `/as-export` and `/as-import` for encrypted account backup/restore.

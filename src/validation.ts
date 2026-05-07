@@ -2,6 +2,8 @@ import { UserFacingError } from "./errors.js";
 import type { ProfileMetadata } from "./types.js";
 
 export const PROFILE_NAME_PATTERN = /^[a-zA-Z0-9._-]{1,64}$/;
+export const PROVIDER_ID_PATTERN = /^[a-z0-9][a-z0-9._-]{0,127}$/;
+const DANGEROUS_PROVIDER_KEYS = new Set(["__proto__", "constructor", "prototype"]);
 
 export function validateProfileName(name: string): string {
   if (!PROFILE_NAME_PATTERN.test(name) || name === "." || name === "..") {
@@ -44,7 +46,13 @@ export function assertValidMetadata(value: unknown, expectedId: string): Profile
   if (metadata.label === undefined || typeof metadata.label !== "string") {
     throw new UserFacingError(`Invalid metadata label for profile: ${expectedId}`);
   }
-  if (metadata.provider !== "openai") throw new UserFacingError(`Invalid metadata provider for profile: ${expectedId}`);
+  if (
+    typeof metadata.provider !== "string" ||
+    !PROVIDER_ID_PATTERN.test(metadata.provider) ||
+    DANGEROUS_PROVIDER_KEYS.has(metadata.provider)
+  ) {
+    throw new UserFacingError(`Invalid metadata provider for profile: ${expectedId}`);
+  }
   if (metadata.target !== "opencode") throw new UserFacingError(`Invalid metadata target for profile: ${expectedId}`);
   if (typeof metadata.createdAt !== "string" || typeof metadata.updatedAt !== "string") {
     throw new UserFacingError(`Invalid metadata timestamps for profile: ${expectedId}`);
