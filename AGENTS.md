@@ -67,7 +67,7 @@ Alt klasörler:
 └── lock
 ```
 
-`config.json` içinde `activeProfile`, `settings.autoSwitch` ve local `profileStatus` bilgileri tutulur. `profileStatus` limited account marker’ları içindir; `limitedAt`, `limitedReason`, `availableAt` tutar ve auth secret içermez.
+`config.json` içinde `activeProfile`, `settings.autoSwitch` ve local `profileStatus` bilgileri tutulur. `profileStatus` limited account marker’ları içindir; `limitedAt`, `limitedReason`, `availableAt` tutar ve auth secret içermez. `/as-accounts` active işaretini provider bazında current `auth.json` hash’i ile hesaplar; `activeProfile` son seçilen/limited marker fallback state’i olarak kalır.
 
 OpenCode’un aktif auth dosyası burada kalır:
 
@@ -153,6 +153,7 @@ XDG_DATA_HOME=/tmp/xdg-data
 
 - `src/profile-summary.ts`
   - `/as-accounts` için profile summary listesi üretir.
+  - Active state’i her profile’ın provider snapshot hash’ini current `auth.json` içindeki aynı provider objesiyle karşılaştırarak provider bazında hesaplar.
   - `expires_at`, `expiresAt`, `expires`, `expiry`, `expiration` benzeri field’lardan expiry çıkarır.
   - `config.profileStatus` üzerinden limited account bilgisini summary’ye ekler.
 
@@ -182,7 +183,7 @@ XDG_DATA_HOME=/tmp/xdg-data
   - Local dev shim: `.opencode/plugins/as-tui.ts` built `dist/src/tui-plugin.js` default export’unu re-export eder.
   - Local dev config `.opencode/tui.json` `plugin: ["./plugins/as-tui.ts"]` kullanır; `npm run build` sonrası OpenCode restart gerekir.
   - `/as-connect`: Provider connect flow + değişen provider auto-detect + auto-save.
-  - `/as-accounts`: Profile listesi + action seçimi.
+  - `/as-accounts`: Provider’a göre gruplanmış profile listesi + provider-aware action seçimi.
   - `/as-settings`: Auto-switch ayarı, limited marker temizleme ve version bilgisi.
   - `/as-export`: Current working directory içine encrypted account backup oluşturur.
   - `/as-import`: Encrypted backup path ve passphrase alıp account profile’larını import eder.
@@ -218,20 +219,22 @@ Beklenen akış:
 3. `provider.connect` native OpenCode command’i trigger edilir.
 4. `~/.local/share/opencode/auth.json` içindeki provider hash değişimi beklenir.
 5. Auth değişirse değişen provider auto-detect edilir ve `runCli(["add", profile, "--provider", detectedProvider, "--current"])` ile profile kaydedilir.
+6. API key gibi akışlarda hash değişimi yoksa veya birden fazla provider değişirse mevcut auth provider’ları arasından seçim yaptırılır; seçilen provider `runCli(["add", profile, "--provider", selectedProvider, "--current"])` ile kaydedilir.
 
 ### `/as-accounts`
 
 Beklenen akış:
 
-1. Kayıtlı profile’lar `DialogSelect` ile listelenir.
-2. Aktif profile işaretlenir.
-3. Expire bilgisi varsa description içinde gösterilir.
+1. Kayıtlı profile’lar provider category’lerine göre `DialogSelect` ile listelenir.
+2. Current `auth.json` içindeki aynı provider objesi profile snapshot hash’iyle eşleşiyorsa o profile provider bazında aktif işaretlenir.
+3. Description içinde provider, active state, limited state ve expire bilgisi gösterilir.
 4. Profile seçildikten sonra action seçilir:
    - `Use`
    - `Reconnect`
    - `Delete`
-5. `Delete` confirmation ister ve `rm` command’i ile `trash/` altına taşır.
-6. `Reconnect` expire yenilemek için provider reconnect flow çalıştırır ve mevcut profile snapshot’ını update eder.
+5. `Use` sadece seçili profile’ın provider objesini active `auth.json` içine merge eder; diğer provider objeleri korunur.
+6. `Delete` confirmation ister ve `rm` command’i ile `trash/` altına taşır.
+7. `Reconnect` expire yenilemek için profile’ın kendi provider reconnect flow’unu çalıştırır ve mevcut profile snapshot’ını update eder.
 
 ### `/as-settings`
 
@@ -271,7 +274,7 @@ Beklenen akış:
 2. Event text içinde sadece `usage limit` veya `limit has been reached` ifadeleri aranır.
 3. `session.next.retried` için `attempt #1` sadece loglanır; `attempt #2` ve sonrası switch akışını başlatır.
 4. Eşik geçilince aktif profile `limitedAt`, `limitedReason` ve 5 saat sonrası için `availableAt` ile işaretlenir.
-5. Sonraki limited olmayan profile bulunur.
+5. Sonraki limited olmayan profile aynı provider içinde aranır; farklı provider profile’larına auto-switch yapılmaz.
 6. `settings.autoSwitch = false` ise switch için confirmation istenir.
 7. `settings.autoSwitch = true` ise `runCli(["use", nextProfile])` ile otomatik geçilir.
 8. Auth secret veya provider response body raw olarak loglanmamalı; reason summary/truncation ile yazılmalı.

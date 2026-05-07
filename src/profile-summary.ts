@@ -2,6 +2,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { loadConfig } from "./config.js";
 import { ProfileStore } from "./profile-store.js";
+import { extractProviderAuth } from "./provider-auth.js";
 import type { ProfileMetadata, ProviderId, RuntimePaths } from "./types.js";
 
 export interface ProfileSummary {
@@ -20,7 +21,12 @@ const EXPIRY_KEYS = new Set(["expiresat", "expires", "expiry", "expiration", "ex
 
 export async function listProfileSummaries(paths: RuntimePaths): Promise<ProfileSummary[]> {
   const store = new ProfileStore(paths);
-  const [profiles, status, config] = await Promise.all([store.listProfiles(), store.getActiveStatus(), loadConfig(paths)]);
+  const [profiles, status, config, activeAuthRaw] = await Promise.all([
+    store.listProfiles(),
+    store.getActiveStatus(),
+    loadConfig(paths),
+    readActiveAuth(paths),
+  ]);
 
   return Promise.all(
     profiles.map(async (profile) => {
@@ -29,7 +35,7 @@ export async function listProfileSummaries(paths: RuntimePaths): Promise<Profile
       return {
         id: profile.id,
         provider: profile.provider,
-        isActive: profile.id === status.activeProfile,
+        isActive: isProfileActive(profile, activeAuthRaw, status.activeProfile),
         lastSelectedAt: profile.lastSelectedAt,
         expiresAt: await readProfileExpiry(paths, profile),
         isLimited,
@@ -39,6 +45,24 @@ export async function listProfileSummaries(paths: RuntimePaths): Promise<Profile
       };
     }),
   );
+}
+
+async function readActiveAuth(paths: RuntimePaths): Promise<string | null> {
+  try {
+    return await fs.readFile(paths.authPath, "utf8");
+  } catch {
+    return null;
+  }
+}
+
+function isProfileActive(profile: ProfileMetadata, activeAuthRaw: string | null, fallbackActiveProfile: string | null): boolean {
+  if (!activeAuthRaw) return profile.id === fallbackActiveProfile;
+
+  try {
+    return extractProviderAuth(activeAuthRaw, profile.provider).hash === profile.authHash;
+  } catch {
+    return false;
+  }
 }
 
 function isStatusCurrentlyLimited(status: { limitedAt?: string; availableAt?: string } | undefined): boolean {

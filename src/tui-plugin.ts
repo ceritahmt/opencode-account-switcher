@@ -99,7 +99,7 @@ type ProviderAuthChangeDetection = {
 type ProjectModule = {
   clearLimitedProfiles: (paths: unknown) => Promise<void>;
   exportAccountsEncrypted: (paths: unknown, options: { outputPath?: string; passphrase: string }) => Promise<AccountExportResult>;
-  findNextAvailableProfile: (paths: unknown) => Promise<ProfileSummary | null>;
+  findNextAvailableProfile: (paths: unknown, provider: string) => Promise<ProfileSummary | null>;
   getDefaultAccountExportPath: (cwd?: string) => string;
   getRuntimePaths: (env?: NodeJS.ProcessEnv) => unknown;
   importAccountsEncrypted: (paths: unknown, options: { inputPath: string; passphrase: string }) => Promise<AccountImportResult>;
@@ -505,12 +505,14 @@ async function showAccountsDialog(api: TuiApi): Promise<void> {
     return;
   }
 
+  const displayProfiles = sortProfilesForAccounts(profiles);
+
   api.ui.dialog.replace(() =>
     api.ui.DialogSelect<string>({
       title: "Accounts",
-      placeholder: "Select profile",
-      current: profiles.find((profile) => profile.isActive)?.id,
-      options: profiles.map((profile) => ({
+      placeholder: "Select provider account",
+      current: displayProfiles.find((profile) => profile.isActive)?.id,
+      options: displayProfiles.map((profile) => ({
         title: `${profile.isActive ? "●" : "○"} ${profile.id}`,
         value: profile.id,
         description: formatProfileDescription(profile),
@@ -533,19 +535,19 @@ function showAccountActionDialog(api: TuiApi, profile: ProfileSummary): void {
         {
           title: "Use",
           value: "use",
-          description: "Switch OpenCode auth to this profile",
+          description: `Activate this ${profile.provider} auth profile`,
           category: "Action",
         },
         {
           title: "Reconnect",
           value: "reconnect",
-          description: "Refresh provider auth and update this profile",
+          description: `Refresh ${profile.provider} auth and update this profile`,
           category: "Action",
         },
         {
           title: "Delete",
           value: "delete",
-          description: profile.isActive ? "Active profile cannot be deleted" : "Move this profile to trash",
+          description: profile.isActive ? `Active ${profile.provider} profile cannot be deleted` : "Move this profile to trash",
           category: "Action",
           disabled: profile.isActive,
         },
@@ -553,7 +555,7 @@ function showAccountActionDialog(api: TuiApi, profile: ProfileSummary): void {
       onSelect: (option) => {
         if (option.value === "use") {
           api.ui.dialog.clear();
-          void useProfileFromDialog(api, profile.id);
+          void useProfileFromDialog(api, profile);
           return;
         }
 
@@ -585,22 +587,23 @@ function showDeleteProfileConfirm(api: TuiApi, profile: string): void {
   );
 }
 
-async function useProfileFromDialog(api: TuiApi, profile: string): Promise<void> {
-  await appendDiagnosticLog("/as-accounts action selected", [`profile: ${profile}`, "action: use"]);
+async function useProfileFromDialog(api: TuiApi, profile: ProfileSummary): Promise<void> {
+  await appendDiagnosticLog("/as-accounts action selected", [`profile: ${profile.id}`, `provider: ${profile.provider}`, "action: use"]);
 
-  const result = await runCli(["use", profile]);
+  const result = await runCli(["use", profile.id]);
   await appendDiagnosticLog("/as-accounts profile switch completed", [
-    `profile: ${profile}`,
+    `profile: ${profile.id}`,
+    `provider: ${profile.provider}`,
     `exitCode: ${result.code}`,
     result.stderr ? `stderr: ${summarizeForLog(result.stderr)}` : "stderr: none",
   ]);
 
   if (result.code === 0) {
-    api.ui.toast({ variant: "success", message: `Using profile: ${profile}`, duration: 8000 });
+    api.ui.toast({ variant: "success", message: `Activated ${profile.id} for ${profile.provider}.`, duration: 8000 });
     return;
   }
 
-  api.ui.toast({ variant: "error", message: result.stderr || `Failed to use profile: ${profile}`, duration: 10000 });
+  api.ui.toast({ variant: "error", message: result.stderr || `Failed to use profile: ${profile.id}`, duration: 10000 });
 }
 
 async function deleteProfileFromDialog(api: TuiApi, profile: string): Promise<void> {
@@ -668,7 +671,7 @@ async function handlePersistedLimitState(api: TuiApi): Promise<void> {
   const key = `${limitedProfile.id}:${limitedProfile.limitedAt}`;
   if (lastPersistedLimitHandledKey === key) return;
 
-  const nextProfile = await findNextAvailableProfile().catch(async (error) => {
+  const nextProfile = await findNextAvailableProfile(limitedProfile.provider).catch(async (error) => {
     await appendDiagnosticLog("persisted limit next profile lookup failed", [`error: ${toErrorMessage(error)}`]);
     return null;
   });
@@ -677,47 +680,55 @@ async function handlePersistedLimitState(api: TuiApi): Promise<void> {
   lastPersistedLimitHandledKey = key;
   await appendDiagnosticLog("persisted account limit detected", [
     `limitedProfile: ${limitedProfile.id}`,
+    `provider: ${limitedProfile.provider}`,
     `nextProfile: ${nextProfile.id}`,
     limitedProfile.limitedReason ? `reason: ${summarizeForLog(limitedProfile.limitedReason)}` : "reason: none",
   ]);
 
   const settings = await loadAccountSettings().catch(() => ({ autoSwitch: false }));
   if (settings.autoSwitch) {
-    await switchProfileAfterLimit(api, limitedProfile.id, nextProfile.id, true);
+    await switchProfileAfterLimit(api, limitedProfile, nextProfile, true);
     return;
   }
 
-  showLimitSwitchConfirm(api, limitedProfile.id, nextProfile.id);
+  showLimitSwitchConfirm(api, limitedProfile, nextProfile);
 }
 
-function showLimitSwitchConfirm(api: TuiApi, limitedProfile: string, nextProfile: string): void {
+function showLimitSwitchConfirm(api: TuiApi, limitedProfile: ProfileSummary, nextProfile: ProfileSummary): void {
   api.ui.dialog.replace(() =>
     api.ui.DialogConfirm({
       title: "Usage limit detected",
-      message: `${limitedProfile} reached a usage limit. Switch to ${nextProfile}?`,
+      message: `${limitedProfile.id} reached a ${limitedProfile.provider} usage limit. Switch to ${nextProfile.id}?`,
       onConfirm: () => {
         api.ui.dialog.clear();
         void switchProfileAfterLimit(api, limitedProfile, nextProfile, false);
       },
       onCancel: () => {
         api.ui.dialog.clear();
-        api.ui.toast({ variant: "warning", message: `Account issue detected for ${limitedProfile}.`, duration: 8000 });
+        api.ui.toast({ variant: "warning", message: `Account issue detected for ${limitedProfile.id}.`, duration: 8000 });
       },
     }),
   );
 }
 
-async function switchProfileAfterLimit(api: TuiApi, limitedProfile: string, nextProfile: string, automatic: boolean): Promise<void> {
+async function switchProfileAfterLimit(
+  api: TuiApi,
+  limitedProfile: ProfileSummary,
+  nextProfile: ProfileSummary,
+  automatic: boolean,
+): Promise<void> {
   await appendDiagnosticLog("account limit switch started", [
-    `limitedProfile: ${limitedProfile}`,
-    `nextProfile: ${nextProfile}`,
+    `limitedProfile: ${limitedProfile.id}`,
+    `provider: ${limitedProfile.provider}`,
+    `nextProfile: ${nextProfile.id}`,
     `automatic: ${automatic}`,
   ]);
 
-  const result = await runCli(["use", nextProfile]);
+  const result = await runCli(["use", nextProfile.id]);
   await appendDiagnosticLog("account limit switch completed", [
-    `limitedProfile: ${limitedProfile}`,
-    `nextProfile: ${nextProfile}`,
+    `limitedProfile: ${limitedProfile.id}`,
+    `provider: ${limitedProfile.provider}`,
+    `nextProfile: ${nextProfile.id}`,
     `exitCode: ${result.code}`,
     result.stderr ? `stderr: ${summarizeForLog(result.stderr)}` : "stderr: none",
   ]);
@@ -725,13 +736,13 @@ async function switchProfileAfterLimit(api: TuiApi, limitedProfile: string, next
   if (result.code === 0) {
     api.ui.toast({
       variant: "success",
-      message: `${automatic ? "Auto-switched" : "Switched"} from ${limitedProfile} to ${nextProfile}.`,
+      message: `${automatic ? "Auto-switched" : "Switched"} ${limitedProfile.provider} from ${limitedProfile.id} to ${nextProfile.id}.`,
       duration: 10000,
     });
     return;
   }
 
-  api.ui.toast({ variant: "error", message: result.stderr || `Failed to switch to ${nextProfile}.`, duration: 10000 });
+  api.ui.toast({ variant: "error", message: result.stderr || `Failed to switch to ${nextProfile.id}.`, duration: 10000 });
 }
 
 async function reconnectProfileFromDialog(api: TuiApi, profile: ProfileSummary): Promise<void> {
@@ -781,7 +792,7 @@ async function reconnectProfileFromDialog(api: TuiApi, profile: ProfileSummary):
   ]);
 
   if (updateResult.code === 0) {
-    api.ui.toast({ variant: "success", message: `Reconnected profile: ${profile.id}`, duration: 10000 });
+    api.ui.toast({ variant: "success", message: `Reconnected ${profile.provider} profile: ${profile.id}`, duration: 10000 });
     return;
   }
 
@@ -813,24 +824,63 @@ async function connectAndAutosave(api: TuiApi, profile: string): Promise<void> {
     `ambiguous: ${detection.ambiguous}`,
   ]);
   if (detection.ambiguous) {
-    api.ui.toast({
-      variant: "warning",
-      message: `Multiple provider auth changes were detected. Try /as-connect again and connect only one provider.`,
-      duration: 10000,
-    });
+    await showConnectProviderFallbackDialog(
+      api,
+      profile,
+      authPath,
+      "Multiple provider auth changes were detected. Select the provider to save.",
+    );
     return;
   }
 
   if (!detection.provider) {
+    await showConnectProviderFallbackDialog(
+      api,
+      profile,
+      authPath,
+      "No provider auth change was detected. If you used an existing API key auth, choose the provider to save.",
+    );
+    return;
+  }
+
+  await saveConnectedProviderProfile(api, profile, detection.provider);
+}
+
+async function showConnectProviderFallbackDialog(api: TuiApi, profile: string, authPath: string, message: string): Promise<void> {
+  const currentHashes = await readProviderHashes(authPath).catch(() => ({}));
+  const providers = Object.keys(currentHashes).sort();
+  await appendDiagnosticLog("/as-connect provider fallback opened", [`profile: ${profile}`, `providers: ${providers.length}`]);
+
+  if (providers.length === 0) {
     api.ui.toast({
       variant: "warning",
-      message: `Provider auth was not detected/changed. Try /as-connect again after connecting.`,
+      message: "Provider auth was not detected. Connect a provider first, then run /as-connect again.",
       duration: 10000,
     });
     return;
   }
 
-  const detectedProvider = detection.provider;
+  api.ui.toast({ variant: "warning", message, duration: 10000 });
+  api.ui.dialog.replace(() =>
+    api.ui.DialogSelect<string>({
+      title: "Select Auth Provider",
+      placeholder: "Choose provider to save",
+      current: providers.length === 1 ? providers[0] : undefined,
+      options: providers.map((provider) => ({
+        title: provider,
+        value: provider,
+        description: `Save current ${provider} auth as "${profile}"`,
+        category: "Provider",
+      })),
+      onSelect: (option) => {
+        api.ui.dialog.clear();
+        void saveConnectedProviderProfile(api, profile, option.value);
+      },
+    }),
+  );
+}
+
+async function saveConnectedProviderProfile(api: TuiApi, profile: string, detectedProvider: string): Promise<void> {
   const result = await runCli(["add", profile, "--provider", detectedProvider, "--current"]);
   await appendDiagnosticLog("/as-connect profile save completed", [
     `provider: ${detectedProvider}`,
@@ -983,9 +1033,9 @@ async function importAccounts(inputPath: string, passphrase: string): Promise<Ac
   return project.importAccountsEncrypted(project.getRuntimePaths(process.env), { inputPath, passphrase });
 }
 
-async function findNextAvailableProfile(): Promise<ProfileSummary | null> {
+async function findNextAvailableProfile(provider: string): Promise<ProfileSummary | null> {
   const project = await loadProjectModule();
-  return project.findNextAvailableProfile(project.getRuntimePaths(process.env));
+  return project.findNextAvailableProfile(project.getRuntimePaths(process.env), provider);
 }
 
 async function loadProjectModule(): Promise<ProjectModule> {
@@ -1072,7 +1122,8 @@ function summarizeForLog(input: string): string {
 }
 
 function formatProfileDescription(profile: ProfileSummary): string {
-  const parts = [profile.provider];
+  const parts = [`Provider: ${profile.provider}`];
+  if (profile.isActive) parts.push("active for provider");
   if (profile.isLimited) {
     parts.push(`limited${profile.limitedReason ? `: ${profile.limitedReason}` : ""}`);
     parts.push(`available in: ${formatAvailableIn(profile.availableAt)}`);
@@ -1083,9 +1134,18 @@ function formatProfileDescription(profile: ProfileSummary): string {
 }
 
 function formatHomeFooterStatus(profile: ProfileSummary): string {
-  const parts = [`AS: ${profile.id}`];
+  const parts = [`AS: ${profile.id}`, profile.provider];
   if (profile.expiresAt) parts.push(`expires: ${formatFooterDate(profile.expiresAt)}`);
   return parts.join(" · ");
+}
+
+function sortProfilesForAccounts(profiles: ProfileSummary[]): ProfileSummary[] {
+  return [...profiles].sort((a, b) => {
+    const providerCompare = a.provider.localeCompare(b.provider);
+    if (providerCompare !== 0) return providerCompare;
+    if (a.isActive !== b.isActive) return a.isActive ? -1 : 1;
+    return a.id.localeCompare(b.id);
+  });
 }
 
 function formatFooterDate(value: string): string {

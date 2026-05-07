@@ -100,9 +100,9 @@ If you already have plugins, keep them and add `@ceritahmt/opencode-as@latest` t
 /as-import
 ```
 
-`/as-connect` opens a native TUI prompt for the profile name, then opens OpenCode's native interactive provider login/connect dialog through the TUI plugin. After auth changes, it auto-detects the changed provider key, such as `openai` or `zai-coding-plan`, and saves that provider object as the chosen profile.
+`/as-connect` opens a native TUI prompt for the profile name, then opens OpenCode's native interactive provider login/connect dialog through the TUI plugin. After auth changes, it auto-detects the changed provider key, such as `openai` or `zai-coding-plan`, and saves that provider object as the chosen profile. If an API key flow reuses an existing auth object and no hash change is detected, `/as-connect` falls back to a provider picker so you can choose the current provider auth to save.
 
-`/as-accounts` opens a native TUI account list. Select a profile first, then choose `Use`, `Reconnect`, or `Delete`. If the saved provider auth contains an expiry field, it is shown in the list.
+`/as-accounts` opens a native TUI account list grouped by provider. Active markers are provider-aware: a profile is marked active when the current `auth.json` provider object matches that profile's snapshot. Select a profile first, then choose `Use`, `Reconnect`, or `Delete`. If the saved provider auth contains an expiry field, it is shown in the list.
 
 `/as-settings` opens account settings. It can enable or disable auto-switch, clear locally remembered limited-account markers, and show the installed package version.
 
@@ -131,11 +131,11 @@ The native interactive path is `/as-connect`, which triggers OpenCode's `provide
 2. Restart OpenCode so plugin config is reloaded.
 3. In the OpenCode TUI, run `/as-connect` and enter a profile name.
 4. Complete OpenCode's native provider connect/login flow.
-5. Open `/as-accounts` to view saved profiles, switch accounts, reconnect expired auth, or delete a profile.
+5. Open `/as-accounts` to view saved profiles grouped by provider, switch accounts, reconnect expired auth, or delete a profile.
 6. Open `/as-settings` to enable/disable auto-switch, clear limited markers, and see the installed package version.
 7. Use `/as-export` and `/as-import` for encrypted account backup/restore.
 
-When OpenCode reports a usage-limit message, the plugin marks the current profile as limited for 5 hours. If auto-switch is disabled it asks before switching; if auto-switch is enabled it switches to the next available profile automatically.
+When OpenCode reports a usage-limit message, the plugin marks the current profile as limited for 5 hours. If auto-switch is disabled it asks before switching; if auto-switch is enabled it switches to the next available profile for the same provider automatically.
 
 ## OpenCode command integration
 
@@ -215,8 +215,8 @@ Public OpenCode plugin APIs currently expose hooks and tools, so the reliable MV
 
 The server/TUI plugins listen for OpenCode `session.next.retried`, `session.error`, `session.next.step.failed`, `session.status`, `message.updated`, and `tui.toast.show` events. If an event message contains `usage limit` or `limit has been reached`, the first retry is logged and `attempt #2` marks the active profile as limited in `config.json` for 5 hours.
 
-- If auto-switch is disabled, the TUI asks for confirmation before switching to the next available profile.
-- If auto-switch is enabled via `/as-settings`, it switches to the next available profile automatically.
+- If auto-switch is disabled, the TUI asks for confirmation before switching to the next available profile for the same provider.
+- If auto-switch is enabled via `/as-settings`, it switches to the next available profile for the same provider automatically.
 - `/as-accounts` shows limited profiles with remaining time, for example `available in: 4h 59m`.
 - Limited markers are local runtime state and can be cleared from `/as-settings`.
 

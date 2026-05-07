@@ -19,6 +19,11 @@ test("tui plugin registers native connect command", async () => {
   assert.match(source, /detectChangedProvider/);
   assert.match(source, /newlyAddedProviders/);
   assert.match(source, /Multiple provider auth changes were detected/);
+  assert.match(source, /showConnectProviderFallbackDialog/);
+  assert.match(source, /Select Auth Provider/);
+  assert.match(source, /No provider auth change was detected/);
+  assert.match(source, /Save current \$\{provider\} auth as/);
+  assert.match(source, /saveConnectedProviderProfile/);
 });
 
 test("tui plugin registers accounts command with action selection", async () => {
@@ -27,6 +32,10 @@ test("tui plugin registers accounts command with action selection", async () => 
 
   assert.match(source, /name:\s*"as-accounts"/);
   assert.match(source, /DialogSelect/);
+  assert.match(source, /Select provider account/);
+  assert.match(source, /sortProfilesForAccounts/);
+  assert.match(source, /Provider: \$\{profile\.provider\}/);
+  assert.match(source, /active for provider/);
   assert.match(source, /Select action/);
   assert.match(source, /value:\s*"use"/);
   assert.match(source, /value:\s*"reconnect"/);
@@ -35,6 +44,7 @@ test("tui plugin registers accounts command with action selection", async () => 
   assert.match(source, /runCli\(\["use", profile\.id\]\)/);
   assert.match(source, /runCli\(\["update", profile\.id, "--provider", profile\.provider, "--current"\]\)/);
   assert.match(source, /runCli\(\["rm", profile\]\)/);
+  assert.match(source, /Activated \$\{profile\.id\} for \$\{profile\.provider\}/);
 });
 
 test("tui plugin registers settings and usage-limit auto-switch hooks", async () => {
@@ -72,8 +82,9 @@ test("tui plugin registers settings and usage-limit auto-switch hooks", async ()
   assert.match(source, /retryAttempt < 2/);
   assert.match(source, /account limit observed by tui/);
   assert.doesNotMatch(source, /project\.markActiveProfileLimited/);
-  assert.match(source, /findNextAvailableProfile/);
-  assert.match(source, /runCli\(\["use", nextProfile\]\)/);
+  assert.match(source, /findNextAvailableProfile\(limitedProfile\.provider\)/);
+  assert.match(source, /runCli\(\["use", nextProfile\.id\]\)/);
+  assert.match(source, /Auto-switched" : "Switched"\} \$\{limitedProfile\.provider\}/);
 });
 
 test("tui plugin registers encrypted account export and import commands", async () => {
@@ -99,6 +110,7 @@ test("tui plugin renders active profile in home footer", async () => {
   assert.match(source, /refreshHomeFooterStatus/);
   assert.match(source, /formatHomeFooterStatus/);
   assert.match(source, /AS: \$\{profile\.id\}/);
+  assert.match(source, /profile\.provider/);
   assert.match(source, /expires: \$\{formatFooterDate\(profile\.expiresAt\)\}/);
   assert.match(source, /api\.renderer\?\.requestRender\?\.\(\)/);
 });

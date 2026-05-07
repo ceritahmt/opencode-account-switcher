@@ -4,7 +4,7 @@ import { withLock } from "./lock.js";
 import { ProfileStore } from "./profile-store.js";
 import { listProfileSummaries, type ProfileSummary } from "./profile-summary.js";
 import { extractProviderAuth } from "./provider-auth.js";
-import type { AccountSettings, RuntimePaths } from "./types.js";
+import type { AccountSettings, ProviderId, RuntimePaths } from "./types.js";
 
 export const DEFAULT_LIMIT_COOLDOWN_MS = 5 * 60 * 60 * 1000;
 
@@ -24,7 +24,10 @@ export async function setAutoSwitch(paths: RuntimePaths, autoSwitch: boolean): P
 export async function markActiveProfileLimited(paths: RuntimePaths, reason: string): Promise<string | null> {
   return withLock(paths.lockPath, async () => {
     const config = await loadConfig(paths);
-    const activeProfile = config.activeProfile ?? (await inferActiveProfileFromCurrentAuth(paths));
+    const activeProfile =
+      config.activeProfile && (await isProfileActiveInCurrentAuth(paths, config.activeProfile))
+        ? config.activeProfile
+        : await inferActiveProfileFromCurrentAuth(paths);
     if (!activeProfile) return null;
     const limitedAt = new Date();
 
@@ -64,8 +67,10 @@ export async function clearLimitedProfiles(paths: RuntimePaths): Promise<void> {
   });
 }
 
-export async function findNextAvailableProfile(paths: RuntimePaths): Promise<ProfileSummary | null> {
-  const profiles = await listProfileSummaries(paths);
+export async function findNextAvailableProfile(paths: RuntimePaths, provider: ProviderId): Promise<ProfileSummary | null> {
+  if (!provider) return null;
+
+  const profiles = (await listProfileSummaries(paths)).filter((profile) => profile.provider === provider);
   if (profiles.length <= 1) return null;
 
   const activeIndex = profiles.findIndex((profile) => profile.isActive);
@@ -77,6 +82,23 @@ export async function findNextAvailableProfile(paths: RuntimePaths): Promise<Pro
   }
 
   return null;
+}
+
+async function isProfileActiveInCurrentAuth(paths: RuntimePaths, profileId: string): Promise<boolean> {
+  let authRaw: string;
+  try {
+    authRaw = await readTextFile(paths.authPath);
+  } catch {
+    return false;
+  }
+
+  const store = new ProfileStore(paths);
+  try {
+    const profile = await store.readMetadata(profileId);
+    return extractProviderAuth(authRaw, profile.provider).hash === profile.authHash;
+  } catch {
+    return false;
+  }
 }
 
 async function inferActiveProfileFromCurrentAuth(paths: RuntimePaths): Promise<string | null> {
