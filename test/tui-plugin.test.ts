@@ -71,8 +71,8 @@ test("tui plugin registers settings and usage-limit auto-switch hooks", async ()
   assert.match(source, /api\.event\?\.on\("message\.updated"/);
   assert.match(source, /api\.event\?\.on\("tui\.toast\.show"/);
   assert.match(source, /limit detection registration/);
-  assert.match(source, /limit event received/);
-  assert.match(source, /limit event ignored/);
+  assert.doesNotMatch(source, /limit event received/);
+  assert.doesNotMatch(source, /limit event ignored/);
   assert.doesNotMatch(source, /summarizeEventForLog/);
   assert.doesNotMatch(source, /summary: \$\{summarizeEventForLog/);
   assert.doesNotMatch(source, /responseBody/);
@@ -86,6 +86,10 @@ test("tui plugin registers settings and usage-limit auto-switch hooks", async ()
   assert.match(source, /account limit retry pending/);
   assert.match(source, /retryAttempt < 2/);
   assert.match(source, /account limit observed by tui/);
+  assert.match(source, /initializePersistedLimitPollingBaseline/);
+  assert.match(source, /persistedLimitPollingInitialized/);
+  assert.match(source, /persisted limit baseline captured/);
+  assert.match(source, /formatPersistedLimitKey/);
   assert.doesNotMatch(source, /project\.markActiveProfileLimited/);
   assert.match(source, /findNextAvailableProfile\(limitedProfile\.provider\)/);
   assert.match(source, /runCli\(\["use", nextProfile\.id\]\)/);
@@ -106,17 +110,20 @@ test("tui plugin registers encrypted account export and import commands", async 
   assert.match(source, /importAccountsEncrypted/);
 });
 
-test("tui plugin renders active profile in home footer", async () => {
+test("tui plugin renders active profiles in session sidebar", async () => {
   const pluginPath = path.join(process.cwd(), "src", "tui-plugin.ts");
   const source = await fs.readFile(pluginPath, "utf8");
 
-  assert.match(source, /registerHomeFooter\(api\)/);
-  assert.match(source, /slots:\s*\{[\s\S]*home_footer\(\)/);
-  assert.match(source, /refreshHomeFooterStatus/);
-  assert.match(source, /formatHomeFooterStatus/);
-  assert.match(source, /AS: \$\{profile\.id\}/);
+  assert.match(source, /registerActiveAccountsSidebar\(api\)/);
+  assert.match(source, /slots:\s*\{[\s\S]*sidebar_content\(\)/);
+  assert.match(source, /order:\s*250/);
+  assert.match(source, /refreshSidebarAccountsStatus/);
+  assert.match(source, /profiles\.filter\(\(profile\) => profile\.isActive\)/);
+  assert.match(source, /formatSidebarAccountsStatus/);
+  assert.match(source, /▼ AS Accounts/);
+  assert.match(source, /\$\{profile\.provider\} \$\{profile\.id\}/);
   assert.match(source, /profile\.provider/);
-  assert.match(source, /expires: \$\{formatFooterDate\(profile\.expiresAt\)\}/);
+  assert.match(source, /expires \$\{formatFooterDate\(profile\.expiresAt\)\}/);
   assert.match(source, /api\.renderer\?\.requestRender\?\.\(\)/);
 });
 

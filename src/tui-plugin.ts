@@ -56,7 +56,7 @@ type TuiApi = {
     };
   };
   slots?: {
-    register: (plugin: { order?: number; slots: { home_footer: () => unknown } }) => unknown;
+    register: (plugin: { order?: number; slots: { sidebar_content?: () => unknown; home_footer?: () => unknown } }) => unknown;
   };
   renderer?: {
     requestRender?: () => void;
@@ -115,7 +115,8 @@ const PROFILE_NAME_PATTERN = /^[a-zA-Z0-9._-]{1,64}$/;
 const PROVIDER_ID_PATTERN = /^[a-z0-9][a-z0-9._-]{0,127}$/;
 let lastLimitHandledAt = 0;
 let lastPersistedLimitHandledKey: string | null = null;
-let homeFooterStatus: string | null = null;
+let persistedLimitPollingInitialized = false;
+let sidebarAccountsStatus: string | null = null;
 
 const ACCOUNT_SWITCH_TRIGGER_RE =
   /usage limit|limit has been reached/i;
@@ -125,7 +126,7 @@ const plugin = {
   tui: async (api: TuiApi) => {
     registerLimitDetection(api);
     registerPersistedLimitPolling(api);
-    registerHomeFooter(api);
+    registerActiveAccountsSidebar(api);
 
     api.command.register(() => [
       {
@@ -196,30 +197,12 @@ function registerLimitDetection(api: TuiApi): void {
   void appendDiagnosticLog("limit detection registration", [`eventApi: ${api.event ? "present" : "missing"}`]);
 
   const disposers = [
-    api.event?.on("session.next.retried", (event) => {
-      void appendDiagnosticLog("limit event received", [`eventType: ${getEventType(event)}`]);
-      void handlePossibleLimitEvent(api, event);
-    }),
-    api.event?.on("session.error", (event) => {
-      void appendDiagnosticLog("limit event received", [`eventType: ${getEventType(event)}`]);
-      void handlePossibleLimitEvent(api, event);
-    }),
-    api.event?.on("session.next.step.failed", (event) => {
-      void appendDiagnosticLog("limit event received", [`eventType: ${getEventType(event)}`]);
-      void handlePossibleLimitEvent(api, event);
-    }),
-    api.event?.on("session.status", (event) => {
-      void appendDiagnosticLog("limit event received", [`eventType: ${getEventType(event)}`]);
-      void handlePossibleLimitEvent(api, event);
-    }),
-    api.event?.on("message.updated", (event) => {
-      void appendDiagnosticLog("limit event received", [`eventType: ${getEventType(event)}`]);
-      void handlePossibleLimitEvent(api, event);
-    }),
-    api.event?.on("tui.toast.show", (event) => {
-      void appendDiagnosticLog("limit event received", [`eventType: ${getEventType(event)}`]);
-      void handlePossibleLimitEvent(api, event);
-    }),
+    api.event?.on("session.next.retried", (event) => void handlePossibleLimitEvent(api, event)),
+    api.event?.on("session.error", (event) => void handlePossibleLimitEvent(api, event)),
+    api.event?.on("session.next.step.failed", (event) => void handlePossibleLimitEvent(api, event)),
+    api.event?.on("session.status", (event) => void handlePossibleLimitEvent(api, event)),
+    api.event?.on("message.updated", (event) => void handlePossibleLimitEvent(api, event)),
+    api.event?.on("tui.toast.show", (event) => void handlePossibleLimitEvent(api, event)),
   ].filter((dispose): dispose is () => void => typeof dispose === "function");
 
   void appendDiagnosticLog("limit detection registered", [`handlers: ${disposers.length}`]);
@@ -233,6 +216,7 @@ function registerLimitDetection(api: TuiApi): void {
 
 function registerPersistedLimitPolling(api: TuiApi): void {
   void appendDiagnosticLog("persisted limit polling registered");
+  void initializePersistedLimitPollingBaseline();
 
   const interval = setInterval(() => {
     void handlePersistedLimitState(api);
@@ -243,12 +227,12 @@ function registerPersistedLimitPolling(api: TuiApi): void {
   });
 }
 
-function registerHomeFooter(api: TuiApi): void {
+function registerActiveAccountsSidebar(api: TuiApi): void {
   if (!api.slots?.register) return;
 
-  void refreshHomeFooterStatus(api);
+  void refreshSidebarAccountsStatus(api);
   const interval = setInterval(() => {
-    void refreshHomeFooterStatus(api);
+    void refreshSidebarAccountsStatus(api);
   }, 5000);
 
   api.lifecycle?.onDispose?.(() => {
@@ -256,25 +240,39 @@ function registerHomeFooter(api: TuiApi): void {
   });
 
   api.slots.register({
-    order: 900,
+    order: 250,
     slots: {
-      home_footer() {
-        return homeFooterStatus;
+      sidebar_content() {
+        return sidebarAccountsStatus;
       },
     },
   });
 }
 
-async function refreshHomeFooterStatus(api: TuiApi): Promise<void> {
+async function initializePersistedLimitPollingBaseline(): Promise<void> {
   const profiles = await listProfileSummaries().catch(async (error) => {
-    await appendDiagnosticLog("home footer profile lookup failed", [`error: ${toErrorMessage(error)}`]);
+    await appendDiagnosticLog("persisted limit baseline failed", [`error: ${toErrorMessage(error)}`]);
     return [] as ProfileSummary[];
   });
-  const activeProfile = profiles.find((profile) => profile.isActive);
-  const nextStatus = activeProfile ? formatHomeFooterStatus(activeProfile) : null;
 
-  if (nextStatus === homeFooterStatus) return;
-  homeFooterStatus = nextStatus;
+  const limitedProfile = profiles.find((profile) => profile.isActive && profile.isLimited && profile.limitedAt);
+  lastPersistedLimitHandledKey = limitedProfile ? formatPersistedLimitKey(limitedProfile) : null;
+  persistedLimitPollingInitialized = true;
+  await appendDiagnosticLog("persisted limit baseline captured", [
+    limitedProfile ? `limitedProfile: ${limitedProfile.id}` : "limitedProfile: none",
+  ]);
+}
+
+async function refreshSidebarAccountsStatus(api: TuiApi): Promise<void> {
+  const profiles = await listProfileSummaries().catch(async (error) => {
+    await appendDiagnosticLog("sidebar accounts profile lookup failed", [`error: ${toErrorMessage(error)}`]);
+    return [] as ProfileSummary[];
+  });
+  const activeProfiles = sortProfilesForAccounts(profiles.filter((profile) => profile.isActive));
+  const nextStatus = formatSidebarAccountsStatus(activeProfiles);
+
+  if (nextStatus === sidebarAccountsStatus) return;
+  sidebarAccountsStatus = nextStatus;
   api.renderer?.requestRender?.();
 }
 
@@ -676,10 +674,7 @@ async function handlePossibleLimitEvent(api: TuiApi, event: unknown): Promise<vo
   if (isInternalLimitToast(event)) return;
 
   const reason = extractLimitReason(event);
-  if (!reason) {
-    await appendDiagnosticLog("limit event ignored", [`eventType: ${getEventType(event)}`]);
-    return;
-  }
+  if (!reason) return;
 
   const retryAttempt = extractRetryAttempt(event);
   if (shouldWaitForRetryAttempt(event, retryAttempt)) {
@@ -708,6 +703,8 @@ async function handlePossibleLimitEvent(api: TuiApi, event: unknown): Promise<vo
 }
 
 async function handlePersistedLimitState(api: TuiApi): Promise<void> {
+  if (!persistedLimitPollingInitialized) return;
+
   const profiles = await listProfileSummaries().catch(async (error) => {
     await appendDiagnosticLog("persisted limit polling failed", [`error: ${toErrorMessage(error)}`]);
     return [] as ProfileSummary[];
@@ -716,7 +713,7 @@ async function handlePersistedLimitState(api: TuiApi): Promise<void> {
   const limitedProfile = profiles.find((profile) => profile.isActive && profile.isLimited);
   if (!limitedProfile || !limitedProfile.limitedAt) return;
 
-  const key = `${limitedProfile.id}:${limitedProfile.limitedAt}`;
+  const key = formatPersistedLimitKey(limitedProfile);
   if (lastPersistedLimitHandledKey === key) return;
 
   const nextProfile = await findNextAvailableProfile(limitedProfile.provider).catch(async (error) => {
@@ -740,6 +737,10 @@ async function handlePersistedLimitState(api: TuiApi): Promise<void> {
   }
 
   showLimitSwitchConfirm(api, limitedProfile, nextProfile);
+}
+
+function formatPersistedLimitKey(profile: ProfileSummary): string {
+  return `${profile.id}:${profile.limitedAt ?? ""}`;
 }
 
 function showLimitSwitchConfirm(api: TuiApi, limitedProfile: ProfileSummary, nextProfile: ProfileSummary): void {
@@ -1186,10 +1187,15 @@ function formatProfileDescription(profile: ProfileSummary): string {
   return parts.join(" · ");
 }
 
-function formatHomeFooterStatus(profile: ProfileSummary): string {
-  const parts = [`AS: ${profile.id}`, profile.provider];
-  if (profile.expiresAt) parts.push(`expires: ${formatFooterDate(profile.expiresAt)}`);
-  return parts.join(" · ");
+function formatSidebarAccountsStatus(activeProfiles: ProfileSummary[]): string | null {
+  if (activeProfiles.length === 0) return null;
+
+  const lines = ["▼ AS Accounts"];
+  for (const profile of activeProfiles) {
+    const expires = profile.expiresAt ? ` expires ${formatFooterDate(profile.expiresAt)}` : "";
+    lines.push(`• ${profile.provider} ${profile.id}${expires}`);
+  }
+  return lines.join("\n");
 }
 
 function sortProfilesForAccounts(profiles: ProfileSummary[]): ProfileSummary[] {

@@ -106,6 +106,8 @@ If you already have plugins, keep them and add `@ceritahmt/opencode-as@latest` t
 
 `/as-settings` opens account settings. It can enable or disable auto-switch, clear locally remembered limited-account markers, reset OpenCode's active `auth.json` after writing a backup, and show the installed package version.
 
+Active provider accounts are also shown in the OpenCode session sidebar under `AS Accounts`.
+
 `/as-export` asks for an export passphrase and writes all saved account profiles to an encrypted file in the current OpenCode working directory: `as-account-exported.json.enc`. The file contains profile auth snapshots, metadata, settings, and local limited markers.
 
 `/as-import` asks for the encrypted export file path, then the passphrase, and imports all profiles from that file. Native file picker support is not exposed by the current TUI plugin API, so the file path is entered manually.
