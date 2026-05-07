@@ -104,7 +104,7 @@ If you already have plugins, keep them and add `@ceritahmt/opencode-as@latest` t
 
 `/as-accounts` opens a native TUI account list grouped by provider. Active markers are provider-aware: a profile is marked active when the current `auth.json` provider object matches that profile's snapshot. Select a profile first, then choose `Use`, `Reconnect`, or `Delete`. If the saved provider auth contains an expiry field, it is shown in the list.
 
-`/as-settings` opens account settings. It can enable or disable auto-switch, clear locally remembered limited-account markers, and show the installed package version.
+`/as-settings` opens account settings. It can enable or disable auto-switch, clear locally remembered limited-account markers, reset OpenCode's active `auth.json` after writing a backup, and show the installed package version.
 
 `/as-export` asks for an export passphrase and writes all saved account profiles to an encrypted file in the current OpenCode working directory: `as-account-exported.json.enc`. The file contains profile auth snapshots, metadata, settings, and local limited markers.
 
@@ -132,7 +132,7 @@ The native interactive path is `/as-connect`, which triggers OpenCode's `provide
 3. In the OpenCode TUI, run `/as-connect` and enter a profile name.
 4. Complete OpenCode's native provider connect/login flow.
 5. Open `/as-accounts` to view saved profiles grouped by provider, switch accounts, reconnect expired auth, or delete a profile.
-6. Open `/as-settings` to enable/disable auto-switch, clear limited markers, and see the installed package version.
+6. Open `/as-settings` to enable/disable auto-switch, clear limited markers, reset OpenCode's active `auth.json`, and see the installed package version.
 7. Use `/as-export` and `/as-import` for encrypted account backup/restore.
 
 When OpenCode reports a usage-limit message, the plugin marks the current profile as limited for 5 hours. If auto-switch is disabled it asks before switching; if auto-switch is enabled it switches to the next available profile for the same provider automatically.

@@ -3,7 +3,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { findNextAvailableProfile, loadAccountSettings, markActiveProfileLimited, setAutoSwitch } from "../src/account-settings.js";
+import { findNextAvailableProfile, loadAccountSettings, markActiveProfileLimited, resetOpenCodeAuth, setAutoSwitch } from "../src/account-settings.js";
 import { loadConfig, saveConfig } from "../src/config.js";
 import { getRuntimePaths } from "../src/paths.js";
 import { ProfileStore } from "../src/profile-store.js";
@@ -111,6 +111,36 @@ test("stores auto-switch setting and limited profile state", async () => {
   assert.match(limited?.availableAt ?? "", /^\d{4}-\d{2}-\d{2}T/);
   assert.ok(Date.parse(limited?.availableAt ?? "") > Date.now());
   assert.equal((await findNextAvailableProfile(paths, "openai"))?.id, "b");
+});
+
+test("resets OpenCode auth with backup and clears active profile", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "opencode-as-reset-auth-test-"));
+  const env = {
+    ...process.env,
+    OPENCODE_AS_HOME: path.join(root, "data"),
+    OPENCODE_AUTH_PATH: path.join(root, "auth.json"),
+    XDG_DATA_HOME: path.join(root, "xdg-data"),
+  } as NodeJS.ProcessEnv;
+  const paths = getRuntimePaths(env);
+  const store = new ProfileStore(paths);
+  const authRaw = JSON.stringify({ openai: { type: "api", key: "secret-a" } });
+
+  await fs.writeFile(paths.authPath, authRaw);
+  await store.saveCurrentProfile("a", "openai");
+  await store.useProfile("a");
+  const authBeforeReset = await fs.readFile(paths.authPath, "utf8");
+
+  const result = await resetOpenCodeAuth(paths);
+
+  assert.equal(result.authPath, paths.authPath);
+  assert.ok(result.backupPath?.endsWith("-reset.auth.json"));
+  assert.equal(await fs.readFile(paths.authPath, "utf8"), "{}\n");
+  assert.equal(await fs.readFile(result.backupPath ?? "", "utf8"), authBeforeReset);
+  assert.equal((await loadConfig(paths)).activeProfile, null);
+
+  await store.useProfile("a");
+  assert.deepEqual(JSON.parse(await fs.readFile(paths.authPath, "utf8")), { openai: { type: "api", key: "secret-a" } });
+  assert.equal((await loadConfig(paths)).activeProfile, "a");
 });
 
 test("finds next available profile within the same provider", async () => {

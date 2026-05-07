@@ -226,6 +226,12 @@ export class ProfileStore {
   private async readOptionalActiveAuth(): Promise<{ raw: string; hash: string } | null> {
     if (!(await pathExists(this.paths.authPath))) return null;
     const raw = await readTextFile(this.paths.authPath);
+    try {
+      const parsed = JSON.parse(raw) as unknown;
+      if (typeof parsed === "object" && parsed !== null && !Array.isArray(parsed) && Object.keys(parsed).length === 0) return null;
+    } catch {
+      // Let assertValidAuthJson produce the existing user-facing parse error below.
+    }
     assertValidAuthJson(raw);
     return { raw, hash: sha256AuthHash(raw) };
   }

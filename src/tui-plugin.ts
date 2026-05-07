@@ -76,10 +76,11 @@ type TuiApi = {
 
 type CliResult = { code: number; stdout: string; stderr: string };
 type AccountAction = "use" | "reconnect" | "delete";
-type SettingsAction = "auto-on" | "auto-off" | "clear-limits" | "version";
+type SettingsAction = "auto-on" | "auto-off" | "clear-limits" | "reset-auth" | "version";
 type AccountSettings = { autoSwitch: boolean };
 type AccountExportResult = { outputPath: string; profileCount: number };
 type AccountImportResult = { inputPath: string; importedProfileCount: number; skippedProfileCount: number };
+type ResetOpenCodeAuthResult = { authPath: string; backupPath: string | null };
 type ProfileSummary = {
   id: string;
   provider: string;
@@ -105,6 +106,7 @@ type ProjectModule = {
   importAccountsEncrypted: (paths: unknown, options: { inputPath: string; passphrase: string }) => Promise<AccountImportResult>;
   loadAccountSettings: (paths: unknown) => Promise<AccountSettings>;
   listProfileSummaries: (paths: unknown) => Promise<ProfileSummary[]>;
+  resetOpenCodeAuth: (paths: unknown) => Promise<ResetOpenCodeAuthResult>;
   runCli: (argv: string[], env?: NodeJS.ProcessEnv) => Promise<CliResult>;
   setAutoSwitch: (paths: unknown, autoSwitch: boolean) => Promise<AccountSettings>;
 };
@@ -417,6 +419,12 @@ async function showAccountSettingsDialog(api: TuiApi): Promise<void> {
           description: "Reset locally remembered account issue states",
           category: "Settings",
         },
+        {
+          title: "Reset OpenCode auth.json",
+          value: "reset-auth",
+          description: "Back up and clear the active OpenCode auth file",
+          category: "Danger",
+        },
       ],
       onSelect: (option) => {
         api.ui.dialog.clear();
@@ -437,6 +445,11 @@ async function applySettingsAction(api: TuiApi, action: SettingsAction): Promise
       return;
     }
 
+    if (action === "reset-auth") {
+      showResetOpenCodeAuthConfirm(api);
+      return;
+    }
+
     const autoSwitch = action === "auto-on";
     await setAutoSwitch(autoSwitch);
     await appendDiagnosticLog("/as-settings auto-switch updated", [`autoSwitch: ${autoSwitch}`]);
@@ -444,6 +457,41 @@ async function applySettingsAction(api: TuiApi, action: SettingsAction): Promise
   } catch (error) {
     const message = toErrorMessage(error);
     await appendDiagnosticLog("/as-settings update failed", [`error: ${message}`]);
+    api.ui.toast({ variant: "error", message, duration: 10000 });
+  }
+}
+
+function showResetOpenCodeAuthConfirm(api: TuiApi): void {
+  api.ui.dialog.replace(() =>
+    api.ui.DialogConfirm({
+      title: "Reset OpenCode auth.json?",
+      message: "This backs up the current auth.json, then clears active OpenCode provider auth. Saved opencode-as profiles are not deleted.",
+      onConfirm: () => {
+        api.ui.dialog.clear();
+        void resetOpenCodeAuthFromDialog(api);
+      },
+      onCancel: () => {
+        api.ui.dialog.clear();
+      },
+    }),
+  );
+}
+
+async function resetOpenCodeAuthFromDialog(api: TuiApi): Promise<void> {
+  try {
+    const result = await resetOpenCodeAuth();
+    await appendDiagnosticLog("/as-settings opencode auth reset", [
+      `authPath: ${result.authPath}`,
+      result.backupPath ? `backup: ${result.backupPath}` : "backup: none",
+    ]);
+    api.ui.toast({
+      variant: "success",
+      message: result.backupPath ? `OpenCode auth.json reset. Backup: ${result.backupPath}` : "OpenCode auth.json reset.",
+      duration: 10000,
+    });
+  } catch (error) {
+    const message = toErrorMessage(error);
+    await appendDiagnosticLog("/as-settings opencode auth reset failed", [`error: ${message}`]);
     api.ui.toast({ variant: "error", message, duration: 10000 });
   }
 }
@@ -1018,6 +1066,11 @@ async function setAutoSwitch(autoSwitch: boolean): Promise<AccountSettings> {
 async function clearLimitedProfiles(): Promise<void> {
   const project = await loadProjectModule();
   await project.clearLimitedProfiles(project.getRuntimePaths(process.env));
+}
+
+async function resetOpenCodeAuth(): Promise<ResetOpenCodeAuthResult> {
+  const project = await loadProjectModule();
+  return project.resetOpenCodeAuth(project.getRuntimePaths(process.env));
 }
 
 async function exportAccounts(passphrase: string): Promise<AccountExportResult> {

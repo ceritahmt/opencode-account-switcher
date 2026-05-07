@@ -160,8 +160,8 @@ XDG_DATA_HOME=/tmp/xdg-data
 ### Account Settings
 
 - `src/account-settings.ts`
-  - `/as-settings` için account settings ve limited profile runtime state helper’larını içerir.
-  - `loadAccountSettings()`, `setAutoSwitch()`, `markActiveProfileLimited()`, `clearLimitedProfiles()`, `findNextAvailableProfile()` export eder.
+  - `/as-settings` için account settings, active auth reset ve limited profile runtime state helper’larını içerir.
+  - `loadAccountSettings()`, `setAutoSwitch()`, `markActiveProfileLimited()`, `clearLimitedProfiles()`, `resetOpenCodeAuth()`, `findNextAvailableProfile()` export eder.
   - Config mutation işlemlerini lock içinde yapar.
 
 ### Account Transfer
@@ -184,7 +184,7 @@ XDG_DATA_HOME=/tmp/xdg-data
   - Local dev config `.opencode/tui.json` `plugin: ["./plugins/as-tui.ts"]` kullanır; `npm run build` sonrası OpenCode restart gerekir.
   - `/as-connect`: Provider connect flow + değişen provider auto-detect + auto-save.
   - `/as-accounts`: Provider’a göre gruplanmış profile listesi + provider-aware action seçimi.
-  - `/as-settings`: Auto-switch ayarı, limited marker temizleme ve version bilgisi.
+  - `/as-settings`: Auto-switch ayarı, limited marker temizleme, OpenCode `auth.json` reset ve version bilgisi.
   - `/as-export`: Current working directory içine encrypted account backup oluşturur.
   - `/as-import`: Encrypted backup path ve passphrase alıp account profile’larını import eder.
   - TUI event bus üzerinden usage-limit sinyali yakalamayı dener.
@@ -244,7 +244,8 @@ Beklenen akış:
 2. `Auto-switch: Enabled` seçilirse `settings.autoSwitch = true` yazılır.
 3. `Auto-switch: Disabled` seçilirse `settings.autoSwitch = false` yazılır.
 4. `Clear limited markers` seçilirse `profileStatus` altındaki limited marker’lar temizlenir.
-5. Dialog içinde installed package version read-only olarak gösterilir.
+5. `Reset OpenCode auth.json` seçilirse confirmation istenir; mevcut `auth.json` `backups/` altına yazılır, active auth `{}` olarak sıfırlanır ve `activeProfile = null` yapılır. Kayıtlı profile snapshot’ları silinmez.
+6. Dialog içinde installed package version read-only olarak gösterilir.
 
 ### `/as-export`
 

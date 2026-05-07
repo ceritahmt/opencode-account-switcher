@@ -59,6 +59,11 @@ test("tui plugin registers settings and usage-limit auto-switch hooks", async ()
   assert.match(source, /value:\s*"version"/);
   assert.match(source, /loadPackageVersion/);
   assert.match(source, /value:\s*"clear-limits"/);
+  assert.match(source, /value:\s*"reset-auth"/);
+  assert.match(source, /Reset OpenCode auth\.json/);
+  assert.match(source, /showResetOpenCodeAuthConfirm/);
+  assert.match(source, /resetOpenCodeAuthFromDialog/);
+  assert.match(source, /project\.resetOpenCodeAuth/);
   assert.match(source, /api\.event\?\.on\("session\.next\.retried"/);
   assert.match(source, /api\.event\?\.on\("session\.error"/);
   assert.match(source, /api\.event\?\.on\("session\.next\.step\.failed"/);
