@@ -123,6 +123,28 @@ After OpenCode login/connect completes, switch profiles with `/as-accounts`:
 Interactive login is intentionally not run from the OpenCode markdown command because it is not a reliable TTY prompt environment.
 The native interactive path is `/as-connect`, which triggers OpenCode's `provider.connect` TUI command.
 
+## Screenshots
+
+Native slash commands:
+
+![OpenCode AS slash commands](screenshots/as-slash-commands.png)
+
+Connect and save a provider profile:
+
+![Profile name prompt](screenshots/as-connect-profile-name.png)
+![Provider connect dialog](screenshots/provider-connect-dialog.png)
+
+Manage provider-grouped accounts:
+
+![Provider account list](screenshots/as-accounts-provider-list.png)
+![Account action menu](screenshots/as-accounts-action-menu.png)
+
+Settings, export, and import:
+
+![Account settings menu](screenshots/as-settings-menu.png)
+![Export passphrase prompt](screenshots/as-export-passphrase.png)
+![Import file path prompt](screenshots/as-import-file-path.png)
+
 ## OpenCode usage
 
 1. Add the package to both OpenCode config files:
