@@ -1,6 +1,6 @@
 {
   "name": "@ceritahmt/opencode-as",
-  "version": "1.0.5",
+  "version": "1.0.6",
   "description": "OpenCode OpenAI / ChatGPT account switcher for multi-account workflows",
   "type": "module",
   "bin": {
@@ -13,8 +13,14 @@
     "./tui": "./dist/src/tui-plugin.js"
   },
   "oc-plugin": [
-    ["server", {}],
-    ["tui", {}]
+    [
+      "server",
+      {}
+    ],
+    [
+      "tui",
+      {}
+    ]
   ],
   "files": [
     "dist/src",
