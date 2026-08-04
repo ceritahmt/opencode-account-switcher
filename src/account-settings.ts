@@ -45,7 +45,7 @@ export async function markActiveProfileLimited(paths: RuntimePaths, reason: stri
       profileStatus: {
         ...config.profileStatus,
         [activeProfile]: {
-          ...config.profileStatus[activeProfile],
+          ...(config.profileStatus[activeProfile] ?? {}),
           limitedAt: limitedAt.toISOString(),
           limitedReason: sanitizeReason(reason),
           availableAt: new Date(limitedAt.getTime() + DEFAULT_LIMIT_COOLDOWN_MS).toISOString(),

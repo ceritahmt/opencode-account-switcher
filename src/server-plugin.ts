@@ -14,7 +14,11 @@ const ServerAccountLimitPlugin: ServerPlugin = async () => {
 
   return {
     event: async ({ event }) => {
-      await handleServerEvent(event);
+      try {
+        await handleServerEvent(event);
+      } catch (error) {
+        await appendServerLog("server limit event handler failed", [toErrorMessage(error)]).catch(() => undefined);
+      }
     },
   };
 };
