@@ -125,6 +125,10 @@ test("tui plugin renders active profiles in session sidebar", async () => {
   assert.match(source, /profile\.provider/);
   assert.match(source, /expires \$\{formatFooterDate\(profile\.expiresAt\)\}/);
   assert.match(source, /api\.renderer\?\.requestRender\?\.\(\)/);
+  // The sidebar slot renderer must return a JSX element (not a plain string)
+  // to avoid the OpenTUI "Orphan text error" TUI crash.
+  assert.match(source, /import \{ jsx \} from "@opentui\/solid\/jsx-runtime"/);
+  assert.match(source, /return jsx\("text", \{ children: lines\.join/);
 });
 
 test("server plugin handles usage-limit events", async () => {

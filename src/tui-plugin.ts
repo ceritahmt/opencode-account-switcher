@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { jsx } from "@opentui/solid/jsx-runtime";
 
 type ToastInput = {
   variant?: "info" | "success" | "warning" | "error";
@@ -1187,7 +1188,7 @@ function formatProfileDescription(profile: ProfileSummary): string {
   return parts.join(" · ");
 }
 
-function formatSidebarAccountsStatus(activeProfiles: ProfileSummary[]): string | null {
+function formatSidebarAccountsStatus(activeProfiles: ProfileSummary[]): ReturnType<typeof jsx> | null {
   if (activeProfiles.length === 0) return null;
 
   const lines = ["▼ AS Accounts"];
@@ -1195,7 +1196,11 @@ function formatSidebarAccountsStatus(activeProfiles: ProfileSummary[]): string |
     const expires = profile.expiresAt ? ` expires ${formatFooterDate(profile.expiresAt)}` : "";
     lines.push(`• ${profile.provider} ${profile.id}${expires}`);
   }
-  return lines.join("\n");
+  // OpenTUI slot renderers must return a JSX element, not a plain string.
+  // Returning a raw string makes the Solid reconciler create an orphan text
+  // node inside a <Box> without a <Text> parent, which crashes the whole TUI
+  // with "Orphan text error: ... must have a <text> as a parent".
+  return jsx("text", { children: lines.join("\n") });
 }
 
 function sortProfilesForAccounts(profiles: ProfileSummary[]): ProfileSummary[] {
